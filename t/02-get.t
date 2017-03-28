@@ -330,7 +330,42 @@ returned table: {"subt":{"foo":"bar"},"hello":"world"}
 
 
 
-=== TEST 10: get() caches for 'ttl'
+=== TEST 10: get() calls callback with args
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache, err = mlcache.new("cache", 200)
+            if not cache then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            local function cb(a, b)
+                return a + b
+            end
+
+            local data, err = cache:get("key", nil, cb, 1, 2)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say(data)
+        }
+    }
+--- request
+GET /t
+--- response_body
+3
+--- no_error_log
+[error]
+
+
+
+=== TEST 11: get() caches for 'ttl'
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -389,7 +424,7 @@ in callback
 
 
 
-=== TEST 11: get() caches miss (nil) for 'ttl'
+=== TEST 12: get() caches miss (nil) for 'ttl'
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -446,7 +481,7 @@ in callback
 
 
 
-=== TEST 12: get() caches for 'opts.ttl'
+=== TEST 13: get() caches for 'opts.ttl'
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
