@@ -84,7 +84,29 @@ no such lua_shared_dict: foo
 
 
 
-=== TEST 4: new() creates an mlcache object
+=== TEST 4: new() validates ttl
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local ok, err = pcall(mlcache.new, "cache", 200, "")
+            if not ok then
+                ngx.log(ngx.ERR, err)
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body
+
+--- error_log
+ttl must be a number
+
+
+
+=== TEST 5: new() creates an mlcache object with defaults
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -97,11 +119,13 @@ no such lua_shared_dict: foo
             end
 
             ngx.say(type(cache))
+            ngx.say(type(cache.ttl))
         }
     }
 --- request
 GET /t
 --- response_body
 table
+number
 --- no_error_log
 [error]

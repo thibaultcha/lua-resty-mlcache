@@ -29,6 +29,10 @@ function _M.new(shm, lru_size, ttl)
         return error("lru_size must be a number", 2)
     end
 
+    if ttl and type(ttl) ~= "number" then
+        return error("ttl must be a number", 2)
+    end
+
     local dict = shared[shm]
     if not dict then
         return nil, "no such lua_shared_dict: " .. shm
@@ -109,14 +113,15 @@ function _M:get(key, opts, cb, ...)
             return error("opts must be a table", 2)
         end
 
+        if type(opts.ttl) ~= "number" then
+            return error("opts.ttl must be a number", 2)
+        end
+
     else
         opts = {}
     end
 
     local ttl = opts.ttl or self.ttl
-    if type(ttl) ~= "number" then
-        return error("opts.ttl must be a number", 2)
-    end
 
     local data = self.lru:get(key)
     if data ~= nil then
