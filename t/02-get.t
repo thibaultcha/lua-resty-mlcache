@@ -443,3 +443,61 @@ in callback
 in callback
 --- no_error_log
 [error]
+
+
+
+=== TEST 12: get() caches for 'opts.ttl'
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache, err = mlcache.new("cache", 200, 1)
+            if not cache then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            local function cb()
+                ngx.say("in callback")
+                return 123
+            end
+
+            local data, err = cache:get("key", { ttl = 2 }, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            assert(data == 123)
+
+            ngx.sleep(0.5)
+
+            data, err = cache:get("key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            assert(data == 123)
+
+            ngx.sleep(0.5)
+
+            print("after sleep")
+
+            data, err = cache:get("key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            assert(data == 123)
+        }
+    }
+--- request
+GET /t
+--- response_body
+in callback
+--- no_error_log
+[error]
