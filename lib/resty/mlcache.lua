@@ -125,7 +125,8 @@ function _M:get(key, opts, cb, ...)
 
     -- not in worker's LRU cache, need shm lookup
 
-    local data, err = shmlru_get(self, key, ttl)
+    local err
+    data, err = shmlru_get(self, key, ttl)
     if err then
         return nil, err
     end
@@ -149,7 +150,7 @@ function _M:get(key, opts, cb, ...)
 
     -- check for another worker's success at running the callback
 
-    local data = shmlru_get(self, key, ttl)
+    data = shmlru_get(self, key, ttl)
     if data then
         return unlock_and_ret(lock, data)
     end
@@ -177,8 +178,7 @@ function _M:get(key, opts, cb, ...)
                                   "could not encode callback result: " .. err)
         end
 
-        local ok, err = self.dict:set(SERIALIZED_KEY_PREFIX .. key, true,
-                                      ttl)
+        ok, err = self.dict:set(SERIALIZED_KEY_PREFIX .. key, true, ttl)
         if not ok then
             return unlock_and_ret(lock, nil,
                                   "could not write to lua_shared_dict: " .. err)
@@ -189,7 +189,7 @@ function _M:get(key, opts, cb, ...)
 
     -- cache value in shm for currently-locked workers
 
-    local ok, err = self.dict:set(key, value, ttl)
+    ok, err = self.dict:set(key, value, ttl)
     if not ok then
         return unlock_and_ret(lock, nil,
                               "could not write to lua_shared_dict: " .. err)
