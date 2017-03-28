@@ -161,23 +161,6 @@ function _M:get(key, opts, cb, ...)
         return error("key must be a string", 2)
     end
 
-    if type(cb) ~= "function" then
-        return error("callback must be a function", 2)
-    end
-
-    if opts then
-        if type(opts) ~= "table" then
-            return error("opts must be a table", 2)
-        end
-
-        if type(opts.ttl) ~= "number" then
-            return error("opts.ttl must be a number", 2)
-        end
-
-    else
-        opts = {}
-    end
-
     local data = self.lru:get(key)
     if data == CACHE_MISS_SENTINEL_LRU then
         return nil
@@ -189,7 +172,17 @@ function _M:get(key, opts, cb, ...)
 
     -- not in worker's LRU cache, need shm lookup
 
-    local ttl = opts.ttl or self.ttl
+    if opts then
+        if type(opts) ~= "table" then
+            return error("opts must be a table", 2)
+        end
+
+        if type(opts.ttl) ~= "number" then
+            return error("opts.ttl must be a number", 2)
+        end
+    end
+
+    local ttl = opts and opts.ttl or self.ttl
 
     local err
     data, err = shmlru_get(self, key, ttl)
@@ -226,6 +219,10 @@ function _M:get(key, opts, cb, ...)
     end
 
     -- still not in shm, we are responsible for running the callback
+
+    if type(cb) ~= "function" then
+        return error("callback must be a function", 2)
+    end
 
     local ok, err = pcall(cb, ...)
     if not ok then
