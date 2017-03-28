@@ -286,7 +286,51 @@ hello world
 
 
 
-=== TEST 9: get() caches for 'opts.ttl'
+=== TEST 9: get() from callback returns table
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local cjson = require "cjson"
+            local mlcache = require "resty.mlcache"
+
+            local cache, err = mlcache.new("cache", 200)
+            if not cache then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            local function cb()
+                return {
+                    hello = "world",
+                    subt  = { foo = "bar" }
+                }
+            end
+
+            local data, err = cache:get("key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            local str = ngx.shared.cache:get("key")
+            ngx.say("in shm: ", str)
+
+            local json = cjson.encode(data)
+            ngx.say("returned table: ", json)
+        }
+    }
+--- request
+GET /t
+--- response_body
+in shm: {"subt":{"foo":"bar"},"hello":"world"}
+returned table: {"subt":{"foo":"bar"},"hello":"world"}
+--- no_error_log
+[error]
+
+
+
+=== TEST 10: get() caches for 'ttl'
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -324,6 +368,8 @@ hello world
 
             ngx.sleep(0.5)
 
+            print("after sleep")
+
             data, err = cache:get("key", nil, cb)
             if err then
                 ngx.log(ngx.ERR, err)
@@ -343,12 +389,11 @@ in callback
 
 
 
-=== TEST 10: get() from callback returns table
+=== TEST 11: get() caches miss (nil) for 'ttl'
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
         content_by_lua_block {
-            local cjson = require "cjson"
             local mlcache = require "resty.mlcache"
 
             local cache, err = mlcache.new("cache", 200, 1)
@@ -358,10 +403,8 @@ in callback
             end
 
             local function cb()
-                return {
-                    hello = "world",
-                    subt  = { foo = "bar" }
-                }
+                ngx.say("in callback")
+                return nil
             end
 
             local data, err = cache:get("key", nil, cb)
@@ -370,17 +413,33 @@ in callback
                 return
             end
 
-            local str = ngx.shared.cache:get("key")
-            ngx.say("in shm: ", str)
+            assert(data == nil)
 
-            local json = cjson.encode(data)
-            ngx.say("returned table: ", json)
+            ngx.sleep(0.5)
+
+            data, err = cache:get("key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            assert(data == nil)
+
+            ngx.sleep(0.5)
+
+            data, err = cache:get("key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            assert(data == nil)
         }
     }
 --- request
 GET /t
 --- response_body
-in shm: {"subt":{"foo":"bar"},"hello":"world"}
-returned table: {"subt":{"foo":"bar"},"hello":"world"}
+in callback
+in callback
 --- no_error_log
 [error]

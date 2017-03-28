@@ -12,8 +12,10 @@ local shared       = ngx.shared
 local setmetatable = setmetatable
 
 
-local SERIALIZED_KEY_PREFIX = "serialized:"
-local LOCK_KEY_PREFIX       = "lock:"
+local SERIALIZED_KEY_PREFIX   = "serialized:"
+local LOCK_KEY_PREFIX         = "lock:"
+local CACHE_MISS_SENTINEL_SHM = "lua-resty-lock:miss"
+local CACHE_MISS_SENTINEL_LRU = {}
 
 
 local _M = {}
@@ -67,6 +69,10 @@ local function shmlru_get(self, key, ttl)
             return set_lru(self, key, v, ttl)
         end
 
+        if v == CACHE_MISS_SENTINEL_SHM then
+            return set_lru(self, key, CACHE_MISS_SENTINEL_LRU, ttl)
+        end
+
         -- maybe need to decode if encoded
 
         local encoded, err = self.dict:get(SERIALIZED_KEY_PREFIX .. key)
@@ -86,6 +92,57 @@ local function shmlru_get(self, key, ttl)
 
         return set_lru(self, key, decoded, ttl)
     end
+end
+
+
+local function shmlru_set(self, key, value, ttl)
+    if value == nil then
+        -- we need to cache that this was a miss, and ensure cache hit for a
+        -- nil value
+        local ok, err = self.dict:set(key, CACHE_MISS_SENTINEL_SHM, ttl)
+        if not ok then
+            return nil, "could not write to lua_shared_dict: " .. err
+        end
+
+        -- set our own worker's LRU cache
+
+        self.lru:set(key, CACHE_MISS_SENTINEL_LRU, ttl)
+
+        return nil
+    end
+
+    if type(value) == "table" then
+        -- res was a table, needs encoding
+        local encoded, err = cjson.encode(value)
+        if not encoded then
+            return nil, "could not encode callback result: " .. err
+        end
+
+        local ok, err = self.dict:set(SERIALIZED_KEY_PREFIX .. key, true, ttl)
+        if not ok then
+            return nil, "could not write to lua_shared_dict: " .. err
+        end
+
+        ok, err = self.dict:set(key, encoded, ttl)
+        if not ok then
+            return nil, "could not write to lua_shared_dict: " .. err
+        end
+
+        -- set our own worker's LRU cache
+
+        return set_lru(self, key, value, ttl)
+    end
+
+    -- cache value in shm for currently-locked workers
+
+    local ok, err = self.dict:set(key, value, ttl)
+    if not ok then
+        return nil, "could not write to lua_shared_dict: " .. err
+    end
+
+    -- set our own worker's LRU cache
+
+    return set_lru(self, key, value, ttl)
 end
 
 
@@ -121,14 +178,18 @@ function _M:get(key, opts, cb, ...)
         opts = {}
     end
 
-    local ttl = opts.ttl or self.ttl
-
     local data = self.lru:get(key)
+    if data == CACHE_MISS_SENTINEL_LRU then
+        return nil
+    end
+
     if data ~= nil then
         return data
     end
 
     -- not in worker's LRU cache, need shm lookup
+
+    local ttl = opts.ttl or self.ttl
 
     local err
     data, err = shmlru_get(self, key, ttl)
@@ -136,7 +197,11 @@ function _M:get(key, opts, cb, ...)
         return nil, err
     end
 
-    if data then
+    if data == CACHE_MISS_SENTINEL_LRU then
+        return nil
+    end
+
+    if data ~= nil then
         return data
     end
 
@@ -167,44 +232,12 @@ function _M:get(key, opts, cb, ...)
         return unlock_and_ret(lock, nil, "callback threw an error: " .. err)
     end
 
-    local res = err
-
-    if res == nil then
-        return unlock_and_ret(lock) -- nil, nil
+    local value, err = shmlru_set(self, key, err, ttl)
+    if err then
+        return unlock_and_ret(lock, nil, err)
     end
 
-    local value = res
-
-    if type(res) == "table" then
-        -- res was a table, needs encoding
-        local encoded, err = cjson.encode(res)
-        if not encoded then
-            return unlock_and_ret(lock, nil,
-                                  "could not encode callback result: " .. err)
-        end
-
-        ok, err = self.dict:set(SERIALIZED_KEY_PREFIX .. key, true, ttl)
-        if not ok then
-            return unlock_and_ret(lock, nil,
-                                  "could not write to lua_shared_dict: " .. err)
-        end
-
-        value = encoded
-    end
-
-    -- cache value in shm for currently-locked workers
-
-    ok, err = self.dict:set(key, value, ttl)
-    if not ok then
-        return unlock_and_ret(lock, nil,
-                              "could not write to lua_shared_dict: " .. err)
-    end
-
-    -- set our own worker's LRU cache
-
-    set_lru(self, key, value, ttl)
-
-    return unlock_and_ret(lock, res)
+    return unlock_and_ret(lock, value)
 end
 
 
