@@ -44,6 +44,10 @@ function _M.new(shm, opts)
             return error("opts.neg_ttl must be a number")
         end
 
+        if opts.ipc_shm and type(opts.ipc_shm) ~= "string" then
+            return error("opts.ipc_shm must be a string")
+        end
+
     else
         opts = {}
     end
@@ -53,15 +57,30 @@ function _M.new(shm, opts)
         return nil, "no such lua_shared_dict: " .. shm
     end
 
-    local ml_cache = {
-        lru        = lrucache.new(opts.lru_size or 100),
-        dict       = dict,
-        shm        = shm,
-        ttl        = opts.ttl     or 30,
-        neg_ttl    = opts.neg_ttl or 5
+    local self  = {
+        lru     = lrucache.new(opts.lru_size or 100),
+        dict    = dict,
+        shm     = shm,
+        ttl     = opts.ttl     or 30,
+        neg_ttl = opts.neg_ttl or 5
     }
 
-    return setmetatable(ml_cache, mt)
+    if opts.ipc_shm then
+        local mlcache_ipc = require "resty.mlcache.ipc"
+
+        local ipc, err = mlcache_ipc.new(opts.ipc_shm, opts.debug)
+        if not ipc then
+            return nil, "could not instanciate mlcache.ipc: " .. err
+        end
+
+        ipc:subscribe("invalidations", function(key)
+            self.lru:delete(key)
+        end)
+
+        self.ipc = ipc
+    end
+
+    return setmetatable(self, mt)
 end
 
 
@@ -269,6 +288,45 @@ function _M:get(key, opts, cb, ...)
     end
 
     return unlock_and_ret(lock, value)
+end
+
+
+function _M:delete(key)
+    if type(key) ~= "string" then
+        return error("key must be a string")
+    end
+
+    if not self.ipc then
+        return nil, "no ipc to propagate deletion"
+    end
+
+    self.lru:delete(key)
+
+    local ok, err = self.dict:delete(key)
+    if not ok then
+        return nil, "could not delete from shm: " .. err
+    end
+
+    local ok, err = self.ipc:broadcast("invalidations", key)
+    if not ok then
+        return nil, "could not broadcast deletion: " .. err
+    end
+
+    return true
+end
+
+
+function _M:update()
+    if not self.ipc then
+        return nil, "no ipc to update from"
+    end
+
+    local ok, err = self.ipc:poll()
+    if not ok then
+        return nil, "could not poll ipc events: " .. err
+    end
+
+    return true
 end
 
 

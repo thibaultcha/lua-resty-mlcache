@@ -6,8 +6,6 @@ use Cwd qw(cwd);
 
 workers(1);
 
-log_level('notice');
-
 plan tests => repeat_each() * (blocks() * 4) + 8;
 
 my $pwd = cwd();

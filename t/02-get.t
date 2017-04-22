@@ -404,8 +404,6 @@ GET /t
 
             ngx.sleep(0.5)
 
-            print("after sleep")
-
             data, err = cache:get("key", nil, cb)
             if err then
                 ngx.log(ngx.ERR, err)
@@ -522,8 +520,6 @@ in callback
             assert(data == 123)
 
             ngx.sleep(0.5)
-
-            print("after sleep")
 
             data, err = cache:get("key", nil, cb)
             if err then
