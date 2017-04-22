@@ -1,5 +1,7 @@
 # lua-resty-mlcache
 
+[![Build Status][badge-travis-image]][badge-travis-url]
+
 Fast multi-level key/value cache for OpenResty.
 
 - Can cache scalar Lua types and tables.
@@ -115,3 +117,6 @@ Work licensed under the MIT License.
 
 [lua-resty-lock]: https://github.com/openresty/lua-resty-lock
 [lua-resty-lrucache]: https://github.com/openresty/lua-resty-lrucache
+
+[badge-travis-url]: https://travis-ci.org/thibaultcha/lua-resty-mlcache
+[badge-travis-image]: https://travis-ci.org/thibaultcha/lua-resty-mlcache.svg?branch=master

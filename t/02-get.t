@@ -313,17 +313,21 @@ hello world
             end
 
             local str = ngx.shared.cache:get("key")
-            ngx.say("in shm: ", str)
 
             local json = cjson.encode(data)
-            ngx.say("returned table: ", json)
+
+            ngx.say("LRU == shm: ", str == json)
+
+            ngx.say("hello: ", data.hello)
+            ngx.say("subt.foo: ", data.subt.foo)
         }
     }
 --- request
 GET /t
 --- response_body
-in shm: {"subt":{"foo":"bar"},"hello":"world"}
-returned table: {"subt":{"foo":"bar"},"hello":"world"}
+LRU == shm: true
+hello: world
+subt.foo: bar
 --- no_error_log
 [error]
 
