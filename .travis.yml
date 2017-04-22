@@ -17,7 +17,7 @@ env:
     - JOBS=2
   matrix:
     - OPENRESTY_VER=1.11.2.2
-   #- OPENRESTY_VER=1.11.2.3
+    - OPENRESTY_VER=1.11.2.3
 
 install:
   - mkdir -p download-cache
