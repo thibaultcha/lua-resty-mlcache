@@ -14,7 +14,7 @@ local setmetatable = setmetatable
 
 local SERIALIZED_KEY_PREFIX   = "serialized:"
 local LOCK_KEY_PREFIX         = "lock:"
-local CACHE_MISS_SENTINEL_SHM = "lua-resty-lock:miss"
+local CACHE_MISS_SENTINEL_SHM = "lua-resty-mlcache:miss"
 local CACHE_MISS_SENTINEL_LRU = {}
 
 
