@@ -7,13 +7,13 @@ Fast multi-level key/value cache for OpenResty.
 - Can invalidate cached entities accross workers via a custom IPC
   (inter-process communication) module.
 
-The cache levels hierarchy is:
-- 1. LRU: Least Recently Used Lua-land cache using [lua-resty-lru] for
-  fast lookup, without exhausting the workers Lua VM memory.
-- 2. shm: `lua_shared_dict` object to avoid running callback if another
-  worker already did.
-- 3. callback: a custom function that will only be run by a single worker
-  to avoid the dogpile effect.
+The cache level hierarchy is:
+1. **LRU**: Least Recently Used Lua-land cache using [lua-resty-lrucache] for
+   fast lookup, without exhausting the workers Lua VM memory.
+2. **shm**: `lua_shared_dict` object to avoid running callback if another
+   worker already did.
+3. **callback**: a custom function that will only be run by a single worker
+   to avoid the dogpile effect (via [lua-resty-lock]).
 
 ### Table of Contents
 
@@ -24,7 +24,7 @@ The cache levels hierarchy is:
 
 ### Synopsis
 
-```nginx
+```
     # nginx.conf
 
     http {
@@ -68,9 +68,7 @@ The cache levels hierarchy is:
                         return user, err
                     end
 
-
                     -- this call triggers the callback
-
                     local user, err = mlcache:get("my_key", nil, callback, "John Doe")
                     if err then
                         ngx.log(ngx.ERR, "error in callback: ", err)
@@ -79,10 +77,8 @@ The cache levels hierarchy is:
 
                     ngx.say(user.username) -- "John Doe"
 
-
                     -- this call *does not* trigger the callback, "my_key"
                     -- is already cached and contains our user
-
                     local user, err = mlcache:get("my_key", nil, callback, "John Doe")
                     if err then
                         ngx.log(ngx.ERR, "error in callback: ", err)
@@ -115,3 +111,7 @@ TODO
 Work licensed under the MIT License.
 
 [Back to TOC](#table-of-contents)
+
+
+[lua-resty-lock]: https://github.com/openresty/lua-resty-lock
+[lua-resty-lrucache]: https://github.com/openresty/lua-resty-lrucache
