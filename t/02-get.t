@@ -3,7 +3,6 @@
 use Test::Nginx::Socket::Lua;
 use Cwd qw(cwd);
 
-master_on();
 workers(2);
 
 #repeat_each(2);
@@ -28,7 +27,7 @@ __DATA__
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache", 200)
+            local cache, err = mlcache.new("cache")
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -42,7 +41,7 @@ __DATA__
     }
 --- request
 GET /t
---- response_body_like
+--- response_body
 key must be a string
 --- no_error_log
 [error]
@@ -56,7 +55,7 @@ key must be a string
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache", 200)
+            local cache, err = mlcache.new("cache")
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -70,7 +69,7 @@ key must be a string
     }
 --- request
 GET /t
---- response_body_like
+--- response_body
 callback must be a function
 --- no_error_log
 [error]
@@ -85,7 +84,7 @@ callback must be a function
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache", 200)
+            local cache, err = mlcache.new("cache")
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -99,7 +98,7 @@ callback must be a function
     }
 --- request
 GET /t
---- response_body_like
+--- response_body
 opts must be a table
 --- no_error_log
 [error]
@@ -113,7 +112,7 @@ opts must be a table
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache", 200)
+            local cache, err = mlcache.new("cache")
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -145,7 +144,7 @@ callback threw an error: .*? oops
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache", 200)
+            local cache, err = mlcache.new("cache")
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -182,7 +181,7 @@ number
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache", 200)
+            local cache, err = mlcache.new("cache")
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -219,7 +218,7 @@ false
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache", 200)
+            local cache, err = mlcache.new("cache")
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -256,7 +255,7 @@ nil
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache", 200)
+            local cache, err = mlcache.new("cache")
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -294,7 +293,7 @@ hello world
             local cjson = require "cjson"
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache", 200)
+            local cache, err = mlcache.new("cache")
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -337,7 +336,7 @@ returned table: {"subt":{"foo":"bar"},"hello":"world"}
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache", 200)
+            local cache, err = mlcache.new("cache")
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -372,7 +371,9 @@ GET /t
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache", 200, 1)
+            local cache, err = mlcache.new("cache", {
+                ttl = 1
+            })
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -424,14 +425,17 @@ in callback
 
 
 
-=== TEST 12: get() caches miss (nil) for 'ttl'
+=== TEST 12: get() caches miss (nil) for 'neg_ttl'
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache", 200, 1)
+            local cache, err = mlcache.new("cache", {
+                ttl     = 10,
+                neg_ttl = 1
+            })
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -488,7 +492,7 @@ in callback
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache", 200, 1)
+            local cache, err = mlcache.new("cache")
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return

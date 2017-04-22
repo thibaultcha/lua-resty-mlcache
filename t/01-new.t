@@ -40,14 +40,14 @@ shm must be a string
 
 
 
-=== TEST 2: new() validates lru_size
+=== TEST 2: new() validates opts
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local ok, err = pcall(mlcache.new, "")
+            local ok, err = pcall(mlcache.new, "", "foo")
             if not ok then
                 ngx.log(ngx.ERR, err)
             end
@@ -58,7 +58,7 @@ GET /t
 --- response_body
 
 --- error_log
-lru_size must be a number
+opts must be a table
 
 
 
@@ -69,7 +69,7 @@ lru_size must be a number
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("foo", 200)
+            local cache, err = mlcache.new("foo")
             if not cache then
                 ngx.log(ngx.ERR, err)
             end
@@ -84,14 +84,40 @@ no such lua_shared_dict: foo
 
 
 
-=== TEST 4: new() validates ttl
+=== TEST 4: new() validates lru_size
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local ok, err = pcall(mlcache.new, "cache", 200, "")
+            local ok, err = pcall(mlcache.new, "cache", {
+                lru_size = "",
+            })
+            if not ok then
+                ngx.log(ngx.ERR, err)
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body
+
+--- error_log
+lru_size must be a number
+
+
+
+=== TEST 5: new() validates ttl
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local ok, err = pcall(mlcache.new, "cache", {
+                ttl = ""
+            })
             if not ok then
                 ngx.log(ngx.ERR, err)
             end
@@ -106,26 +132,52 @@ ttl must be a number
 
 
 
-=== TEST 5: new() creates an mlcache object with defaults
+=== TEST 6: new() validates neg_ttl
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache", 200)
+            local ok, err = pcall(mlcache.new, "cache", {
+                neg_ttl = ""
+            })
+            if not ok then
+                ngx.log(ngx.ERR, err)
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body
+
+--- error_log
+neg_ttl must be a number
+
+
+
+=== TEST 7: new() creates an mlcache object with defaults
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache, err = mlcache.new("cache")
             if not cache then
                 ngx.log(ngx.ERR, err)
             end
 
             ngx.say(type(cache))
             ngx.say(type(cache.ttl))
+            ngx.say(type(cache.neg_ttl))
         }
     }
 --- request
 GET /t
 --- response_body
 table
+number
 number
 --- no_error_log
 [error]

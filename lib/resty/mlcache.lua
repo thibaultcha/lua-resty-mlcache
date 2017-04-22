@@ -22,17 +22,30 @@ local _M = {}
 local mt = { __index = _M }
 
 
-function _M.new(shm, lru_size, ttl)
+function _M.new(shm, opts)
     if type(shm) ~= "string" then
-        return error("shm must be a string", 2)
+        return error("shm must be a string")
     end
 
-    if type(lru_size) ~= "number" then
-        return error("lru_size must be a number", 2)
-    end
+    if opts then
+        if type(opts) ~= "table" then
+            return error("opts must be a table")
+        end
 
-    if ttl and type(ttl) ~= "number" then
-        return error("ttl must be a number", 2)
+        if opts.lru_size and type(opts.lru_size) ~= "number" then
+            return error("opts.lru_size must be a number")
+        end
+
+        if opts.ttl and type(opts.ttl) ~= "number" then
+            return error("opts.ttl must be a number")
+        end
+
+        if opts.neg_ttl and type(opts.neg_ttl) ~= "number" then
+            return error("opts.neg_ttl must be a number")
+        end
+
+    else
+        opts = {}
     end
 
     local dict = shared[shm]
@@ -41,10 +54,11 @@ function _M.new(shm, lru_size, ttl)
     end
 
     local ml_cache = {
-        lru        = lrucache.new(lru_size),
+        lru        = lrucache.new(opts.lru_size or 100),
         dict       = dict,
         shm        = shm,
-        ttl        = ttl or 30,
+        ttl        = opts.ttl     or 30,
+        neg_ttl    = opts.neg_ttl or 5
     }
 
     return setmetatable(ml_cache, mt)
@@ -58,7 +72,7 @@ local function set_lru(self, key, value, ttl)
 end
 
 
-local function shmlru_get(self, key, ttl)
+local function shmlru_get(self, key, ttl, neg_ttl)
     local v, err = self.dict:get(key)
     if err then
         return nil, "could not read from lua_shared_dict: " .. err
@@ -70,7 +84,7 @@ local function shmlru_get(self, key, ttl)
         end
 
         if v == CACHE_MISS_SENTINEL_SHM then
-            return set_lru(self, key, CACHE_MISS_SENTINEL_LRU, ttl)
+            return set_lru(self, key, CACHE_MISS_SENTINEL_LRU, neg_ttl)
         end
 
         -- maybe need to decode if encoded
@@ -95,18 +109,18 @@ local function shmlru_get(self, key, ttl)
 end
 
 
-local function shmlru_set(self, key, value, ttl)
+local function shmlru_set(self, key, value, ttl, neg_ttl)
     if value == nil then
         -- we need to cache that this was a miss, and ensure cache hit for a
         -- nil value
-        local ok, err = self.dict:set(key, CACHE_MISS_SENTINEL_SHM, ttl)
+        local ok, err = self.dict:set(key, CACHE_MISS_SENTINEL_SHM, neg_ttl)
         if not ok then
             return nil, "could not write to lua_shared_dict: " .. err
         end
 
         -- set our own worker's LRU cache
 
-        self.lru:set(key, CACHE_MISS_SENTINEL_LRU, ttl)
+        self.lru:set(key, CACHE_MISS_SENTINEL_LRU, neg_ttl)
 
         return nil
     end
@@ -158,25 +172,44 @@ end
 
 function _M:get(key, opts, cb, ...)
     if type(key) ~= "string" then
-        return error("key must be a string", 2)
+        return error("key must be a string")
     end
 
     if type(cb) ~= "function" then
-        return error("callback must be a function", 2)
+        return error("callback must be a function")
     end
+
+    -- opts validation
+
+    local ttl
+    local neg_ttl
 
     if opts then
         if type(opts) ~= "table" then
-            return error("opts must be a table", 2)
+            return error("opts must be a table")
         end
 
-        if type(opts.ttl) ~= "number" then
-            return error("opts.ttl must be a number", 2)
+        if opts.ttl and type(opts.ttl) ~= "number" then
+            return error("opts.ttl must be a number")
         end
 
-    else
-        opts = {}
+        if opts.neg_ttl and type(opts.neg_ttl) ~= "number" then
+            return error("opts.neg_ttl must be a number")
+        end
+
+        ttl     = opts.ttl
+        neg_ttl = opts.neg_ttl
     end
+
+    if not ttl then
+        ttl = self.ttl
+    end
+
+    if not neg_ttl then
+        neg_ttl = self.neg_ttl
+    end
+
+    -- worker LRU cache retrieval
 
     local data = self.lru:get(key)
     if data == CACHE_MISS_SENTINEL_LRU then
@@ -189,10 +222,8 @@ function _M:get(key, opts, cb, ...)
 
     -- not in worker's LRU cache, need shm lookup
 
-    local ttl = opts.ttl or self.ttl
-
     local err
-    data, err = shmlru_get(self, key, ttl)
+    data, err = shmlru_get(self, key, ttl, neg_ttl)
     if err then
         return nil, err
     end
@@ -220,7 +251,7 @@ function _M:get(key, opts, cb, ...)
 
     -- check for another worker's success at running the callback
 
-    data = shmlru_get(self, key, ttl)
+    data = shmlru_get(self, key, ttl, neg_ttl)
     if data then
         return unlock_and_ret(lock, data)
     end
@@ -232,7 +263,7 @@ function _M:get(key, opts, cb, ...)
         return unlock_and_ret(lock, nil, "callback threw an error: " .. err)
     end
 
-    local value, err = shmlru_set(self, key, err, ttl)
+    local value, err = shmlru_set(self, key, err, ttl, neg_ttl)
     if err then
         return unlock_and_ret(lock, nil, err)
     end
