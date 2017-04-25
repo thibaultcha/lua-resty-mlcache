@@ -21,7 +21,7 @@ env:
 
 install:
   - mkdir -p download-cache
-  - if [ ! -f download-cache/openresty-$OPENRESTY_VER ]; then wget -O download-cache/openresty-$OPENRESTY_VER.tar.gz https://openresty.org/download/openresty-$OPENRESTY_VER.tar.gz; fi
+  - if [ ! -f download-cache/openresty-$OPENRESTY_VER.tar.gz ]; then wget -O download-cache/openresty-$OPENRESTY_VER.tar.gz https://openresty.org/download/openresty-$OPENRESTY_VER.tar.gz; fi
   - if [ ! -f download-cache/cpanm ]; then wget -O download-cache/cpanm https://cpanmin.us/; fi
   - chmod +x download-cache/cpanm
   - download-cache/cpanm --notest Test::Nginx > build.log 2>&1 || (cat build.log && exit 1)
