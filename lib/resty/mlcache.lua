@@ -310,8 +310,16 @@ function _M:get(key, opts, cb, ...)
 
     -- check for another worker's success at running the callback
 
-    data = shmlru_get(self, key, ttl, neg_ttl)
+    data, err = shmlru_get(self, key, ttl, neg_ttl)
+    if err then
+        return unlock_and_ret(lock, nil, err)
+    end
+
     if data then
+        if data == CACHE_MISS_SENTINEL_LRU then
+            return unlock_and_ret(lock, nil)
+        end
+
         return unlock_and_ret(lock, data)
     end
 
