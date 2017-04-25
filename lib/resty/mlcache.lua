@@ -1,5 +1,6 @@
 -- vim: st=4 sts=4 sw=4 et:
 
+local ffi        = require "ffi"
 local cjson      = require "cjson.safe"
 local lrucache   = require "resty.lrucache"
 local resty_lock = require "resty.lock"
@@ -9,13 +10,56 @@ local type         = type
 local pcall        = pcall
 local error        = error
 local shared       = ngx.shared
+local ffi_str      = ffi.string
+local ffi_cast     = ffi.cast
 local setmetatable = setmetatable
 
 
-local SERIALIZED_KEY_PREFIX   = "serialized:"
+ffi.cdef [[
+    struct shm_string_table {
+        unsigned int    serialized;
+        unsigned int    len;
+        unsigned char  *data;
+    };
+]]
+
+
+local marshallers
+local unmarshallers
+
+
 local LOCK_KEY_PREFIX         = "lock:"
 local CACHE_MISS_SENTINEL_SHM = "lua-resty-mlcache:miss"
 local CACHE_MISS_SENTINEL_LRU = {}
+
+
+do
+    local str_const              = ffi.typeof("unsigned char *")
+    local shm_string_table_const = ffi.typeof("const struct shm_string_table*")
+    local shm_string_table_size  = ffi.sizeof("struct shm_string_table")
+    local shm_string_table_cdata = ffi.new("struct shm_string_table")
+
+
+    marshallers = {
+        string_table = function(str, serialized)
+            shm_string_table_cdata.serialized = serialized and 1 or 0
+            shm_string_table_cdata.len        = #str
+            shm_string_table_cdata.data       = ffi_cast(str_const, str)
+
+            return ffi_str(shm_string_table_cdata, shm_string_table_size)
+        end
+    }
+
+
+    unmarshallers = {
+        string_table = function(encoded)
+            local shm_string_table = ffi_cast(shm_string_table_const, encoded)
+
+            return ffi_str(shm_string_table.data, shm_string_table.len),
+                   shm_string_table.serialized == 1
+        end
+    }
+end
 
 
 local _M = {}
@@ -106,24 +150,21 @@ local function shmlru_get(self, key, ttl, neg_ttl)
             return set_lru(self, key, CACHE_MISS_SENTINEL_LRU, neg_ttl)
         end
 
-        -- maybe need to decode if encoded
+        local is_table
 
-        local encoded, err = self.dict:get(SERIALIZED_KEY_PREFIX .. key)
-        if err then
-            return nil, "could not read from lua_shared_dict: " .. err
+        v, is_table = unmarshallers.string_table(v)
+
+        if is_table then
+            -- was a table, must decode
+            local decoded, err = cjson.decode(v)
+            if not decoded then
+                return nil, "could not decode value: " .. err
+            end
+
+            v = decoded
         end
 
-        if encoded == nil then
-            -- was a plain string
-            return set_lru(self, key, v, ttl)
-        end
-
-        local decoded, err = cjson.decode(v)
-        if not decoded then
-            return nil, "could not decode value: " .. err
-        end
-
-        return set_lru(self, key, decoded, ttl)
+        return set_lru(self, key, v, ttl)
     end
 end
 
@@ -144,31 +185,30 @@ local function shmlru_set(self, key, value, ttl, neg_ttl)
         return nil
     end
 
-    if type(value) == "table" then
+    -- encode tables as strings with a 'serialized' flag
+
+    local shm_marshalled
+    local value_type = type(value)
+
+    if value_type == "string" then
+        shm_marshalled = marshallers.string_table(value)
+
+    elseif value_type == "table" then
         -- res was a table, needs encoding
         local encoded, err = cjson.encode(value)
         if not encoded then
             return nil, "could not encode callback result: " .. err
         end
 
-        local ok, err = self.dict:set(SERIALIZED_KEY_PREFIX .. key, true, ttl)
-        if not ok then
-            return nil, "could not write to lua_shared_dict: " .. err
-        end
+        shm_marshalled = marshallers.string_table(encoded, true)
 
-        ok, err = self.dict:set(key, encoded, ttl)
-        if not ok then
-            return nil, "could not write to lua_shared_dict: " .. err
-        end
-
-        -- set our own worker's LRU cache
-
-        return set_lru(self, key, value, ttl)
+    else
+        shm_marshalled = value
     end
 
     -- cache value in shm for currently-locked workers
 
-    local ok, err = self.dict:set(key, value, ttl)
+    local ok, err = self.dict:set(key, shm_marshalled, ttl)
     if not ok then
         return nil, "could not write to lua_shared_dict: " .. err
     end

@@ -312,12 +312,6 @@ hello world
                 return
             end
 
-            local str = ngx.shared.cache:get("key")
-
-            local json = cjson.encode(data)
-
-            ngx.say("LRU == shm: ", str == json)
-
             ngx.say("hello: ", data.hello)
             ngx.say("subt.foo: ", data.subt.foo)
         }
@@ -325,7 +319,6 @@ hello world
 --- request
 GET /t
 --- response_body
-LRU == shm: true
 hello: world
 subt.foo: bar
 --- no_error_log
