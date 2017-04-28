@@ -6,20 +6,25 @@ local lrucache   = require "resty.lrucache"
 local resty_lock = require "resty.lock"
 
 
+local now          = ngx.now
 local type         = type
 local pcall        = pcall
 local error        = error
 local shared       = ngx.shared
 local ffi_str      = ffi.string
 local ffi_cast     = ffi.cast
+local tostring     = tostring
+local tonumber     = tonumber
 local setmetatable = setmetatable
 
 
 ffi.cdef [[
-    struct shm_string_table {
-        unsigned int    serialized;
+    struct shm_value {
+        unsigned int    type_len;
         unsigned int    len;
+        unsigned char  *type_data;
         unsigned char  *data;
+        double          at;
     };
 ]]
 
@@ -29,35 +34,92 @@ local unmarshallers
 
 
 local LOCK_KEY_PREFIX         = "lock:"
-local CACHE_MISS_SENTINEL_SHM = "lua-resty-mlcache:miss"
 local CACHE_MISS_SENTINEL_LRU = {}
 
 
 do
-    local str_const              = ffi.typeof("unsigned char *")
-    local shm_string_table_const = ffi.typeof("const struct shm_string_table*")
-    local shm_string_table_size  = ffi.sizeof("struct shm_string_table")
-    local shm_string_table_cdata = ffi.new("struct shm_string_table")
+    local str_const       = ffi.typeof("unsigned char *")
+    local shm_value_const = ffi.typeof("const struct shm_value*")
+    local shm_value_size  = ffi.sizeof("struct shm_value")
+    local shm_value_cdata = ffi.new("struct shm_value")
+
+    local shm_value_nil_cdata     = ffi.new("struct shm_value")
+    shm_value_nil_cdata.len       = 0
+    shm_value_nil_cdata.type_len  = 3
+    shm_value_nil_cdata.data      = ffi_cast(str_const, "")
+    shm_value_nil_cdata.type_data = ffi_cast(str_const, "nil")
 
 
     marshallers = {
-        string_table = function(str, serialized)
-            shm_string_table_cdata.serialized = serialized and 1 or 0
-            shm_string_table_cdata.len        = #str
-            shm_string_table_cdata.data       = ffi_cast(str_const, str)
+        shm_value = function(str_value, value_type, at)
+            shm_value_cdata.at        = at
+            shm_value_cdata.len       = #str_value
+            shm_value_cdata.type_len  = #value_type
+            shm_value_cdata.data      = ffi_cast(str_const, str_value)
+            shm_value_cdata.type_data = ffi_cast(str_const, value_type)
 
-            return ffi_str(shm_string_table_cdata, shm_string_table_size)
-        end
+            return ffi_str(shm_value_cdata, shm_value_size)
+        end,
+
+        shm_nil = function(at)
+            shm_value_nil_cdata.at = at
+
+            return ffi_str(shm_value_nil_cdata, shm_value_size)
+        end,
+
+        number = function(number)
+            return tostring(number)
+        end,
+
+        boolean = function(bool)
+            return bool and "true" or "false"
+        end,
+
+        string = function(str)
+            return str
+        end,
+
+        table = function(t)
+            local json, err = cjson.encode(t)
+            if not json then
+                return nil, "could not encode table value: " .. err
+            end
+
+            return json
+        end,
     }
 
 
     unmarshallers = {
-        string_table = function(encoded)
-            local shm_string_table = ffi_cast(shm_string_table_const, encoded)
+        shm_value = function(marshalled)
+            local shm_value = ffi_cast(shm_value_const, marshalled)
 
-            return ffi_str(shm_string_table.data, shm_string_table.len),
-                   shm_string_table.serialized == 1
-        end
+            local value      = ffi_str(shm_value.data, shm_value.len)
+            local value_type = ffi_str(shm_value.type_data, shm_value.type_len)
+
+            return value, value_type, shm_value.at
+        end,
+
+        number = function(str)
+            return tonumber(str)
+        end,
+
+        boolean = function(str)
+            return str == "true"
+        end,
+
+        string = function(str)
+            return str
+        end,
+
+        table = function(str)
+            local t, err = cjson.decode(str)
+            if not t then
+                return nil, "could not decode table value: " .. err
+            end
+
+            return t
+        end,
     }
 end
 
@@ -142,38 +204,35 @@ local function shmlru_get(self, key, ttl, neg_ttl)
     end
 
     if v ~= nil then
-        if type(v) ~= "string" then
-            return set_lru(self, key, v, ttl)
+        local str_serialized, value_type, at = unmarshallers.shm_value(v)
+
+        if value_type == "nil" then
+            local remaining_ttl = neg_ttl - (now() - at)
+            return set_lru(self, key, CACHE_MISS_SENTINEL_LRU, remaining_ttl)
         end
 
-        if v == CACHE_MISS_SENTINEL_SHM then
-            return set_lru(self, key, CACHE_MISS_SENTINEL_LRU, neg_ttl)
+        local value, err = unmarshallers[value_type](str_serialized)
+        if err then
+            return nil, "could not deserialize table after lua_shared_dict " ..
+                        "retrieval: " .. err
         end
 
-        local is_table
+        local remaining_ttl = ttl - (now() - at)
 
-        v, is_table = unmarshallers.string_table(v)
-
-        if is_table then
-            -- was a table, must decode
-            local decoded, err = cjson.decode(v)
-            if not decoded then
-                return nil, "could not decode value: " .. err
-            end
-
-            v = decoded
-        end
-
-        return set_lru(self, key, v, ttl)
+        return set_lru(self, key, value, remaining_ttl)
     end
 end
 
 
 local function shmlru_set(self, key, value, ttl, neg_ttl)
+    local at = now()
+
     if value == nil then
+        local shm_nil = marshallers.shm_nil(at)
+
         -- we need to cache that this was a miss, and ensure cache hit for a
         -- nil value
-        local ok, err = self.dict:set(key, CACHE_MISS_SENTINEL_SHM, neg_ttl)
+        local ok, err = self.dict:set(key, shm_nil, neg_ttl)
         if not ok then
             return nil, "could not write to lua_shared_dict: " .. err
         end
@@ -185,26 +244,21 @@ local function shmlru_set(self, key, value, ttl, neg_ttl)
         return nil
     end
 
-    -- encode tables as strings with a 'serialized' flag
+    -- serialize insertion time + Lua types for shm storage
 
-    local shm_marshalled
     local value_type = type(value)
 
-    if value_type == "string" then
-        shm_marshalled = marshallers.string_table(value)
-
-    elseif value_type == "table" then
-        -- res was a table, needs encoding
-        local encoded, err = cjson.encode(value)
-        if not encoded then
-            return nil, "could not encode callback result: " .. err
-        end
-
-        shm_marshalled = marshallers.string_table(encoded, true)
-
-    else
-        shm_marshalled = value
+    if not marshallers[value_type] then
+        return error("cannot cache value of type " .. value_type)
     end
+
+    local str_marshalled, err = marshallers[value_type](value)
+    if not str_marshalled then
+        return nil, "could not serialize table for lua_shared_dict insertion: "
+                    .. err
+    end
+
+    local shm_marshalled = marshallers.shm_value(str_marshalled, value_type, at)
 
     -- cache value in shm for currently-locked workers
 

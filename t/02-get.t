@@ -7,7 +7,7 @@ workers(2);
 
 #repeat_each(2);
 
-plan tests => repeat_each() * (blocks() * 3);
+plan tests => repeat_each() * (blocks() * 3) - 1;
 
 my $pwd = cwd();
 
@@ -137,7 +137,7 @@ callback threw an error: .*? oops
 
 
 
-=== TEST 5: get() from callback returns number
+=== TEST 5: get() caches a number
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -154,27 +154,112 @@ callback threw an error: .*? oops
                 return 123
             end
 
+            -- from callback
+
             local data, err = cache:get("key", nil, cb)
             if err then
                 ngx.log(ngx.ERR, err)
                 return
             end
 
-            ngx.say(type(data))
-            ngx.say(data)
+            ngx.say("from callback: ", type(data), " ", data)
+
+            -- from lru
+
+            local data, err = cache:get("key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("from lru: ", type(data), " ", data)
+
+            -- from shm
+
+            cache.lru:delete("key")
+
+            local data, err = cache:get("key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("from shm: ", type(data), " ", data)
         }
     }
 --- request
 GET /t
 --- response_body
-number
-123
+from callback: number 123
+from lru: number 123
+from shm: number 123
 --- no_error_log
 [error]
 
 
 
-=== TEST 6: get() from callback returns boolean
+=== TEST 6: get() caches a boolean (true)
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache, err = mlcache.new("cache")
+            if not cache then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            local function cb()
+                return true
+            end
+
+            -- from callback
+
+            local data, err = cache:get("key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("from callback: ", type(data), " ", data)
+
+            -- from lru
+
+            local data, err = cache:get("key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("from lru: ", type(data), " ", data)
+
+            -- from shm
+
+            cache.lru:delete("key")
+
+            local data, err = cache:get("key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("from shm: ", type(data), " ", data)
+        }
+    }
+--- request
+GET /t
+--- response_body
+from callback: boolean true
+from lru: boolean true
+from shm: boolean true
+--- no_error_log
+[error]
+
+
+
+=== TEST 7: get() caches a boolean (false)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -191,27 +276,51 @@ number
                 return false
             end
 
+            -- from callback
+
             local data, err = cache:get("key", nil, cb)
             if err then
                 ngx.log(ngx.ERR, err)
                 return
             end
 
-            ngx.say(type(data))
-            ngx.say(data)
+            ngx.say("from callback: ", type(data), " ", data)
+
+            -- from lru
+
+            local data, err = cache:get("key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("from lru: ", type(data), " ", data)
+
+            -- from shm
+
+            cache.lru:delete("key")
+
+            local data, err = cache:get("key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("from shm: ", type(data), " ", data)
         }
     }
 --- request
 GET /t
 --- response_body
-boolean
-false
+from callback: boolean false
+from lru: boolean false
+from shm: boolean false
 --- no_error_log
 [error]
 
 
 
-=== TEST 7: get() from callback returns nil
+=== TEST 8: get() caches nil
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -228,27 +337,51 @@ false
                 return nil
             end
 
+            -- from callback
+
             local data, err = cache:get("key", nil, cb)
             if err then
                 ngx.log(ngx.ERR, err)
                 return
             end
 
-            ngx.say(type(data))
-            ngx.say(data)
+            ngx.say("from callback: ", type(data), " ", data)
+
+            -- from lru
+
+            local data, err = cache:get("key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("from lru: ", type(data), " ", data)
+
+            -- from shm
+
+            cache.lru:delete("key")
+
+            local data, err = cache:get("key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("from shm: ", type(data), " ", data)
         }
     }
 --- request
 GET /t
 --- response_body
-nil
-nil
+from callback: nil nil
+from lru: nil nil
+from shm: nil nil
 --- no_error_log
 [error]
 
 
 
-=== TEST 8: get() from callback returns string
+=== TEST 9: get() caches a string
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -265,27 +398,51 @@ nil
                 return "hello world"
             end
 
+            -- from callback
+
             local data, err = cache:get("key", nil, cb)
             if err then
                 ngx.log(ngx.ERR, err)
                 return
             end
 
-            ngx.say(type(data))
-            ngx.say(data)
+            ngx.say("from callback: ", type(data), " ", data)
+
+            -- from lru
+
+            local data, err = cache:get("key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("from lru: ", type(data), " ", data)
+
+            -- from shm
+
+            cache.lru:delete("key")
+
+            local data, err = cache:get("key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("from shm: ", type(data), " ", data)
         }
     }
 --- request
 GET /t
 --- response_body
-string
-hello world
+from callback: string hello world
+from lru: string hello world
+from shm: string hello world
 --- no_error_log
 [error]
 
 
 
-=== TEST 9: get() from callback returns table
+=== TEST 10: get() caches a table
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -306,27 +463,84 @@ hello world
                 }
             end
 
+            -- from callback
+
             local data, err = cache:get("key", nil, cb)
             if err then
                 ngx.log(ngx.ERR, err)
                 return
             end
 
-            ngx.say("hello: ", data.hello)
-            ngx.say("subt.foo: ", data.subt.foo)
+            ngx.say("from callback: ", type(data), " ", data.hello, " ", data.subt.foo)
+
+            -- from lru
+
+            local data, err = cache:get("key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("from lru: ", type(data), " ", data.hello, " ", data.subt.foo)
+
+            -- from shm
+
+            cache.lru:delete("key")
+
+            local data, err = cache:get("key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("from shm: ", type(data), " ", data.hello, " ", data.subt.foo)
         }
     }
 --- request
 GET /t
 --- response_body
-hello: world
-subt.foo: bar
+from callback: table world bar
+from lru: table world bar
+from shm: table world bar
 --- no_error_log
 [error]
 
 
 
-=== TEST 10: get() calls callback with args
+=== TEST 11: get() errors when caching an unsupported type
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local cjson = require "cjson"
+            local mlcache = require "resty.mlcache"
+
+            local cache, err = mlcache.new("cache")
+            if not cache then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            local function cb()
+                return ngx.null
+            end
+
+            local data, err = cache:get("key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+        }
+    }
+--- request
+GET /t
+--- error_code: 500
+--- error_log eval
+qr/\[error\] .*?mlcache\.lua:\d+: cannot cache value of type userdata/
+
+
+
+=== TEST 12: get() calls callback with args
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -361,7 +575,7 @@ GET /t
 
 
 
-=== TEST 11: get() caches for 'ttl'
+=== TEST 13: get() caches hit for 'ttl'
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -420,7 +634,7 @@ in callback
 
 
 
-=== TEST 12: get() caches miss (nil) for 'neg_ttl'
+=== TEST 14: get() caches miss (nil) for 'neg_ttl'
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -480,14 +694,16 @@ in callback
 
 
 
-=== TEST 13: get() caches for 'opts.ttl'
+=== TEST 15: get() caches for 'opts.ttl'
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache")
+            local cache, err = mlcache.new("cache", {
+                ttl = 2
+            })
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -498,7 +714,7 @@ in callback
                 return 123
             end
 
-            local data, err = cache:get("key", { ttl = 2 }, cb)
+            local data, err = cache:get("key", { ttl = 1 }, cb)
             if err then
                 ngx.log(ngx.ERR, err)
                 return
@@ -530,6 +746,66 @@ in callback
 --- request
 GET /t
 --- response_body
+in callback
+in callback
+--- no_error_log
+[error]
+
+
+
+=== TEST 16: get() caches for 'opts.neg_ttl'
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache, err = mlcache.new("cache", {
+                neg_ttl = 2
+            })
+            if not cache then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            local function cb()
+                ngx.say("in callback")
+                return nil
+            end
+
+            local data, err = cache:get("key", { neg_ttl = 1 }, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            assert(data == nil)
+
+            ngx.sleep(0.5)
+
+            data, err = cache:get("key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            assert(data == nil)
+
+            ngx.sleep(0.5)
+
+            data, err = cache:get("key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            assert(data == nil)
+        }
+    }
+--- request
+GET /t
+--- response_body
+in callback
 in callback
 --- no_error_log
 [error]
