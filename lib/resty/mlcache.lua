@@ -25,6 +25,7 @@ ffi.cdef [[
         unsigned char  *type_data;
         unsigned char  *data;
         double          at;
+        double          ttl;
     };
 ]]
 
@@ -51,7 +52,8 @@ do
 
 
     marshallers = {
-        shm_value = function(str_value, value_type, at)
+        shm_value = function(str_value, value_type, at, ttl)
+            shm_value_cdata.ttl       = ttl
             shm_value_cdata.at        = at
             shm_value_cdata.len       = #str_value
             shm_value_cdata.type_len  = #value_type
@@ -61,8 +63,9 @@ do
             return ffi_str(shm_value_cdata, shm_value_size)
         end,
 
-        shm_nil = function(at)
-            shm_value_nil_cdata.at = at
+        shm_nil = function(at, ttl)
+            shm_value_nil_cdata.at  = at
+            shm_value_nil_cdata.ttl = ttl
 
             return ffi_str(shm_value_nil_cdata, shm_value_size)
         end,
@@ -97,7 +100,7 @@ do
             local value      = ffi_str(shm_value.data, shm_value.len)
             local value_type = ffi_str(shm_value.type_data, shm_value.type_len)
 
-            return value, value_type, shm_value.at
+            return value, value_type, shm_value.at, shm_value.ttl
         end,
 
         number = function(str)
@@ -197,17 +200,18 @@ local function set_lru(self, key, value, ttl)
 end
 
 
-local function shmlru_get(self, key, ttl, neg_ttl)
+local function shmlru_get(self, key)
     local v, err = self.dict:get(key)
     if err then
         return nil, "could not read from lua_shared_dict: " .. err
     end
 
     if v ~= nil then
-        local str_serialized, value_type, at = unmarshallers.shm_value(v)
+        local str_serialized, value_type, at, ttl = unmarshallers.shm_value(v)
+
+        local remaining_ttl = ttl - (now() - at)
 
         if value_type == "nil" then
-            local remaining_ttl = neg_ttl - (now() - at)
             return set_lru(self, key, CACHE_MISS_SENTINEL_LRU, remaining_ttl)
         end
 
@@ -216,8 +220,6 @@ local function shmlru_get(self, key, ttl, neg_ttl)
             return nil, "could not deserialize table after lua_shared_dict " ..
                         "retrieval: " .. err
         end
-
-        local remaining_ttl = ttl - (now() - at)
 
         return set_lru(self, key, value, remaining_ttl)
     end
@@ -228,7 +230,7 @@ local function shmlru_set(self, key, value, ttl, neg_ttl)
     local at = now()
 
     if value == nil then
-        local shm_nil = marshallers.shm_nil(at)
+        local shm_nil = marshallers.shm_nil(at, neg_ttl)
 
         -- we need to cache that this was a miss, and ensure cache hit for a
         -- nil value
@@ -258,7 +260,8 @@ local function shmlru_set(self, key, value, ttl, neg_ttl)
                     .. err
     end
 
-    local shm_marshalled = marshallers.shm_value(str_marshalled, value_type, at)
+    local shm_marshalled = marshallers.shm_value(str_marshalled, value_type,
+                                                 at, ttl)
 
     -- cache value in shm for currently-locked workers
 
@@ -336,7 +339,7 @@ function _M:get(key, opts, cb, ...)
     -- not in worker's LRU cache, need shm lookup
 
     local err
-    data, err = shmlru_get(self, key, ttl, neg_ttl)
+    data, err = shmlru_get(self, key)
     if err then
         return nil, err
     end
@@ -364,7 +367,7 @@ function _M:get(key, opts, cb, ...)
 
     -- check for another worker's success at running the callback
 
-    data, err = shmlru_get(self, key, ttl, neg_ttl)
+    data, err = shmlru_get(self, key)
     if err then
         return unlock_and_ret(lock, nil, err)
     end
