@@ -1,3 +1,5 @@
+# vim: st=2 sts=2 sw=2 et:
+
 sudo: false
 
 language: c
@@ -15,24 +17,39 @@ cache:
 env:
   global:
     - JOBS=2
+    - LUAROCKS_VER=2.4.2
   matrix:
     - OPENRESTY_VER=1.11.2.2
     - OPENRESTY_VER=1.11.2.3
+    - LINT=1
 
 install:
   - mkdir -p download-cache
+  - if [ -z "$OPENRESTY_VER" ]; then export OPENRESTY_VER=1.11.2.3; fi
   - if [ ! -f download-cache/openresty-$OPENRESTY_VER.tar.gz ]; then wget -O download-cache/openresty-$OPENRESTY_VER.tar.gz https://openresty.org/download/openresty-$OPENRESTY_VER.tar.gz; fi
+  - if [ ! -f download-cache/luarocks-$LUAROCKS_VER.tar.gz ]; then wget -O download-cache/luarocks-$LUAROCKS_VER.tar.gz https://luarocks.github.io/luarocks/releases/luarocks-$LUAROCKS_VER.tar.gz; fi
   - if [ ! -f download-cache/cpanm ]; then wget -O download-cache/cpanm https://cpanmin.us/; fi
+  - tar -zxf download-cache/openresty-$OPENRESTY_VER.tar.gz
+  - tar -zxf download-cache/luarocks-$LUAROCKS_VER.tar.gz
   - chmod +x download-cache/cpanm
   - download-cache/cpanm --notest Test::Nginx > build.log 2>&1 || (cat build.log && exit 1)
-  - download-cache/cpanm --local-lib=$TRAVIS_BUILD_DIR/perl5 local::lib && eval $(perl -I $TRAVIS_BUILD_DIR/perl5/lib/perl5/ -Mlocal::lib)
-  - tar -zxf download-cache/openresty-$OPENRESTY_VER.tar.gz
+  - download-cache/cpanm --notest --local-lib=$TRAVIS_BUILD_DIR/perl5 local::lib && eval $(perl -I $TRAVIS_BUILD_DIR/perl5/lib/perl5/ -Mlocal::lib)
   - pushd openresty-$OPENRESTY_VER
-  - ./configure --prefix=$TRAVIS_BUILD_DIR/openresty-$OPENRESTY_VER --without-http_ssl_module -j$JOBS > build.log 2>&1 || (cat build.log && exit 1)
+  - export OPENRESTY_PREFIX=$TRAVIS_BUILD_DIR/openresty-$OPENRESTY_VER
+  - ./configure --prefix=$OPENRESTY_PREFIX --without-http_ssl_module -j$JOBS > build.log 2>&1 || (cat build.log && exit 1)
   - make -j$JOBS > build.log 2>&1 || (cat build.log && exit 1)
   - make install > build.log 2>&1 || (cat build.log && exit 1)
   - popd
-  - export PATH=$TRAVIS_BUILD_DIR/openresty-$OPENRESTY_VER/nginx/sbin:$PATH
+  - pushd luarocks-$LUAROCKS_VER
+  - export LUAROCKS_PREFIX=$TRAVIS_BUILD_DIR/luarocks-$LUAROCKS_VER
+  - ./configure --prefix=$LUAROCKS_PREFIX --with-lua=$OPENRESTY_PREFIX/luajit --with-lua-include=$OPENRESTY_PREFIX/luajit/include/luajit-2.1 --lua-suffix=jit
+  - make build
+  - make install
+  - popd
+  - export PATH=$OPENRESTY_PREFIX/nginx/sbin:$LUAROCKS_PREFIX/bin:$PATH
+  - luarocks install luacheck > build.log 2>&1 || (cat build.log && exit 1)
+  - luarocks --version
   - nginx -V
 
-script: prove -r t
+script:
+  - if [ -z "$LINT" ]; then prove -r t; else luacheck lib; fi
