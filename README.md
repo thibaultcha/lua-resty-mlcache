@@ -17,6 +17,36 @@ The cache level hierarchy is:
 3. **callback**: a custom function that will only be run by a single worker
    to avoid the dogpile effect (via [lua-resty-lock]).
 
+As illustrated here:
+
+```
+┌─────────────────────────────────────────────────┐
+│ Nginx                                           │
+│       ┌───────────┐ ┌───────────┐ ┌───────────┐ │
+│       │worker     │ │worker     │ │worker     │ │
+│ lvl 1 │           │ │           │ │           │ │
+│       │ Lua cache │ │ Lua cache │ │ Lua cache │ │
+│       └───────────┘ └───────────┘ └───────────┘ │
+│             │             │             │       │
+│             ▼             ▼             ▼       │
+│       ┌───────────────────────────────────────┐ │
+│       │                                       │ │
+│ lvl 2 │           lua_shared_dict             │ │
+│       │                                       │ │
+│       └───────────────────────────────────────┘ │
+│                           │                     │
+│                           ▼                     │
+│                  ┌──────────────────┐           │
+│                  │     callback     │           │
+│                  └────────┬─────────┘           │
+└───────────────────────────┼─────────────────────┘
+                            │
+  lvl 3                     │   I/O fetch
+                            ▼
+
+                   Database, API, I/O...
+```
+
 TODO:
 - Custom shm serializers for Lua tables when faster performance than lua-cjson
   is desired.
