@@ -35,4 +35,4 @@ install:
   - export PATH=$TRAVIS_BUILD_DIR/openresty-$OPENRESTY_VER/nginx/sbin:$PATH
   - nginx -V
 
-script: prove -r t
+script: TEST_NGINX_RANDOMIZE=1 prove -j$JOBS -r t
