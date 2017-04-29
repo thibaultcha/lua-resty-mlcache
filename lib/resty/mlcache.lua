@@ -33,7 +33,7 @@ local marshallers
 local unmarshallers
 
 
-local LOCK_KEY_PREFIX         = "lock:"
+local LOCK_KEY_PREFIX         = "lua-resty-mlcache:lock:"
 local CACHE_MISS_SENTINEL_LRU = {}
 
 
