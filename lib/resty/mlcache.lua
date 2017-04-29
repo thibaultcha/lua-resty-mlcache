@@ -20,9 +20,8 @@ local setmetatable = setmetatable
 
 ffi.cdef [[
     struct shm_value {
-        unsigned int    type_len;
+        unsigned int    type;
         unsigned int    len;
-        unsigned char  *type_data;
         unsigned char  *data;
         double          at;
         double          ttl;
@@ -38,27 +37,33 @@ local LOCK_KEY_PREFIX         = "lock:"
 local CACHE_MISS_SENTINEL_LRU = {}
 
 
+local type_lookup = {
+  number  = 1,
+  boolean = 2,
+  string  = 3,
+  table   = 4,
+}
+
+
 do
     local str_const       = ffi.typeof("unsigned char *")
     local shm_value_const = ffi.typeof("const struct shm_value*")
     local shm_value_size  = ffi.sizeof("struct shm_value")
     local shm_value_cdata = ffi.new("struct shm_value")
 
-    local shm_value_nil_cdata     = ffi.new("struct shm_value")
-    shm_value_nil_cdata.len       = 0
-    shm_value_nil_cdata.type_len  = 3
-    shm_value_nil_cdata.data      = ffi_cast(str_const, "")
-    shm_value_nil_cdata.type_data = ffi_cast(str_const, "nil")
+    local shm_value_nil_cdata = ffi.new("struct shm_value")
+    shm_value_nil_cdata.len   = 0
+    shm_value_nil_cdata.data  = ffi_cast(str_const, "")
+    shm_value_nil_cdata.type  = 0
 
 
     marshallers = {
         shm_value = function(str_value, value_type, at, ttl)
-            shm_value_cdata.ttl       = ttl
-            shm_value_cdata.at        = at
-            shm_value_cdata.len       = #str_value
-            shm_value_cdata.type_len  = #value_type
-            shm_value_cdata.data      = ffi_cast(str_const, str_value)
-            shm_value_cdata.type_data = ffi_cast(str_const, value_type)
+            shm_value_cdata.ttl  = ttl
+            shm_value_cdata.at   = at
+            shm_value_cdata.len  = #str_value
+            shm_value_cdata.data = ffi_cast(str_const, str_value)
+            shm_value_cdata.type = value_type
 
             return ffi_str(shm_value_cdata, shm_value_size)
         end,
@@ -70,19 +75,19 @@ do
             return ffi_str(shm_value_nil_cdata, shm_value_size)
         end,
 
-        number = function(number)
+        [1] = function(number) -- number
             return tostring(number)
         end,
 
-        boolean = function(bool)
+        [2] = function(bool) -- boolean
             return bool and "true" or "false"
         end,
 
-        string = function(str)
+        [3] = function(str) -- string
             return str
         end,
 
-        table = function(t)
+        [4] = function(t) -- table
             local json, err = cjson.encode(t)
             if not json then
                 return nil, "could not encode table value: " .. err
@@ -97,25 +102,24 @@ do
         shm_value = function(marshalled)
             local shm_value = ffi_cast(shm_value_const, marshalled)
 
-            local value      = ffi_str(shm_value.data, shm_value.len)
-            local value_type = ffi_str(shm_value.type_data, shm_value.type_len)
+            local value = ffi_str(shm_value.data, shm_value.len)
 
-            return value, value_type, shm_value.at, shm_value.ttl
+            return value, shm_value.type, shm_value.at, shm_value.ttl
         end,
 
-        number = function(str)
+        [1] = function(str) -- number
             return tonumber(str)
         end,
 
-        boolean = function(str)
+        [2] = function(str) -- boolean
             return str == "true"
         end,
 
-        string = function(str)
+        [3] = function(str) -- string
             return str
         end,
 
-        table = function(str)
+        [4] = function(str) -- table
             local t, err = cjson.decode(str)
             if not t then
                 return nil, "could not decode table value: " .. err
@@ -211,7 +215,8 @@ local function shmlru_get(self, key)
 
         local remaining_ttl = ttl - (now() - at)
 
-        if value_type == "nil" then
+        -- value_type of 0 is a nil entry
+        if value_type == 0 then
             return set_lru(self, key, CACHE_MISS_SENTINEL_LRU, remaining_ttl)
         end
 
@@ -248,10 +253,10 @@ local function shmlru_set(self, key, value, ttl, neg_ttl)
 
     -- serialize insertion time + Lua types for shm storage
 
-    local value_type = type(value)
+    local value_type = type_lookup[type(value)]
 
     if not marshallers[value_type] then
-        return error("cannot cache value of type " .. value_type)
+        return error("cannot cache value of type " .. type(value))
     end
 
     local str_marshalled, err = marshallers[value_type](value)
