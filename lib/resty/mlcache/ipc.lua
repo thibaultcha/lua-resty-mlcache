@@ -17,14 +17,14 @@ local INDEX_KEY = "index"
 
 
 ffi.cdef [[
-  struct event {
-    unsigned int   at;
-    unsigned int   pid;
-    unsigned int   data_len;
-    unsigned int   channel_len;
-    unsigned char *channel;
-    unsigned char *data;
-  };
+    struct event {
+        unsigned int    at;
+        unsigned int    pid;
+        unsigned int    data_len;
+        unsigned int    channel_len;
+        unsigned char  *channel;
+        unsigned char  *data;
+    };
 ]]
 
 

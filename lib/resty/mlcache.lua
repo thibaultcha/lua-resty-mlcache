@@ -37,11 +37,11 @@ local LOCK_KEY_PREFIX         = "lock:"
 local CACHE_MISS_SENTINEL_LRU = {}
 
 
-local type_lookup = {
-  number  = 1,
-  boolean = 2,
-  string  = 3,
-  table   = 4,
+local TYPES_LOOKUP = {
+    number  = 1,
+    boolean = 2,
+    string  = 3,
+    table   = 4,
 }
 
 
@@ -79,15 +79,15 @@ do
             return tostring(number)
         end,
 
-        [2] = function(bool) -- boolean
+        [2] = function(bool)   -- boolean
             return bool and "true" or "false"
         end,
 
-        [3] = function(str) -- string
+        [3] = function(str)    -- string
             return str
         end,
 
-        [4] = function(t) -- table
+        [4] = function(t)      -- table
             local json, err = cjson.encode(t)
             if not json then
                 return nil, "could not encode table value: " .. err
@@ -253,7 +253,7 @@ local function shmlru_set(self, key, value, ttl, neg_ttl)
 
     -- serialize insertion time + Lua types for shm storage
 
-    local value_type = type_lookup[type(value)]
+    local value_type = TYPES_LOOKUP[type(value)]
 
     if not marshallers[value_type] then
         return error("cannot cache value of type " .. type(value))
