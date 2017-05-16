@@ -186,11 +186,12 @@ function _M.new(shm, opts)
             return nil, "could not instanciate mlcache.ipc: " .. err
         end
 
-        ipc:subscribe("invalidations", function(key)
+        self.ipc = ipc
+        self.ipc_invalidation_channel = "lua-resty-mlcache:invalidations"
+
+        self.ipc:subscribe(self.ipc_invalidation_channel, function(key)
             self.lru:delete(key)
         end)
-
-        self.ipc = ipc
     end
 
     return setmetatable(self, mt)
@@ -448,7 +449,7 @@ function _M:delete(key)
         return nil, "could not delete from shm: " .. err
     end
 
-    local ok, err = self.ipc:broadcast("invalidations", key)
+    local ok, err = self.ipc:broadcast(self.ipc_invalidation_channel, key)
     if not ok then
         return nil, "could not broadcast deletion: " .. err
     end

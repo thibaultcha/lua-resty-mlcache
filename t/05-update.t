@@ -67,7 +67,7 @@ no ipc to update from
                 debug = true
             }))
 
-            cache.ipc:subscribe("invalidations", function(data)
+            cache.ipc:subscribe("lua-resty-mlcache:invalidations", function(data)
                 ngx.log(ngx.NOTICE, "received event from invalidations: ", data)
             end)
 
