@@ -234,7 +234,11 @@ function _M:poll(max_event_wait)
                 local cbs = self.callbacks[event.channel]
                 if cbs then
                     for j = 1, #cbs do
-                        cbs[j](event.data)
+                        local pok, perr = pcall(cbs[j], event.data)
+                        if not pok then
+                            log(ERR, "callback for channel '", event.channel,
+                                     "' threw a Lua error: ", perr)
+                        end
                     end
                 end
             end

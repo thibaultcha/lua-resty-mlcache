@@ -6,7 +6,7 @@ use Cwd qw(cwd);
 
 workers(1);
 
-plan tests => repeat_each() * (blocks() * 5) + 5;
+plan tests => repeat_each() * (blocks() * 5) + 4;
 
 my $pwd = cwd();
 
@@ -86,7 +86,43 @@ received event from my_channel: hello world
 
 
 
-=== TEST 3: poll() catches invalid max_event_wait arg
+=== TEST 3: broadcast() runs event callback in protected mode
+--- http_config eval
+qq{
+    $::HttpConfig
+
+    init_worker_by_lua_block {
+        local mlcache_ipc = require "resty.mlcache.ipc"
+
+        ipc = assert(mlcache_ipc.new("ipc", true))
+
+        ipc:subscribe("my_channel", function(data)
+            error("my callback had an error")
+        end)
+    }
+}
+--- config
+    location = /t {
+        content_by_lua_block {
+            assert(ipc:broadcast("my_channel", "hello world"))
+
+            unset_pid(ipc, 1)
+
+            assert(ipc:poll())
+        }
+    }
+--- request
+GET /t
+--- response_body
+
+--- error_log eval
+qr/\[error\] .*? \[ipc\] callback for channel 'my_channel' threw a Lua error: init_worker_by_lua:\d: my callback had an error/
+--- no_error_log
+lua entry thread aborted: runtime error
+
+
+
+=== TEST 4: poll() catches invalid max_event_wait arg
 --- http_config eval
 qq{
     $::HttpConfig
@@ -115,7 +151,7 @@ max_event_wait must be a number
 
 
 
-=== TEST 4: poll() catches up with all events
+=== TEST 5: poll() catches up with all events
 --- http_config eval
 qq{
     $::HttpConfig
@@ -157,7 +193,7 @@ received event from my_channel: msg 3
 
 
 
-=== TEST 5: poll() does not execute events from self (same pid)
+=== TEST 6: poll() does not execute events from self (same pid)
 --- http_config eval
 qq{
     $::HttpConfig
@@ -190,7 +226,7 @@ received event from my_channel: hello world
 
 
 
-=== TEST 6: poll() runs all registered callbacks for a channel
+=== TEST 7: poll() runs all registered callbacks for a channel
 --- http_config eval
 qq{
     $::HttpConfig
@@ -236,7 +272,7 @@ callback 3 from my_channel: hello world
 
 
 
-=== TEST 7: poll() exits when no event to poll
+=== TEST 8: poll() exits when no event to poll
 --- http_config eval
 qq{
     $::HttpConfig
@@ -267,7 +303,7 @@ callback from my_channel: hello world
 
 
 
-=== TEST 8: poll() runs all callbacks from all channels
+=== TEST 9: poll() runs all callbacks from all channels
 --- http_config eval
 qq{
     $::HttpConfig
@@ -324,7 +360,7 @@ callback 2 from other_channel: hello ipc 2
 
 
 
-=== TEST 9: poll() catches tampered shm (by third-party users)
+=== TEST 10: poll() catches tampered shm (by third-party users)
 --- http_config eval
 qq{
     $::HttpConfig
@@ -357,7 +393,7 @@ index is not a number, shm tampered with
 
 
 
-=== TEST 10: poll() retries getting an event if not yet inserted
+=== TEST 11: poll() retries getting an event if not yet inserted
 --- http_config eval
 qq{
     $::HttpConfig
@@ -399,7 +435,7 @@ GET /t
 
 
 
-=== TEST 11: poll() get event retries never exceeds max_sleep
+=== TEST 12: poll() get event retries never exceeds max_sleep
 --- http_config eval
 qq{
     $::HttpConfig
@@ -436,7 +472,7 @@ GET /t
 
 
 
-=== TEST 12: poll() logs errors and continue if event has been tampered with
+=== TEST 13: poll() logs errors and continue if event has been tampered with
 --- http_config eval
 qq{
     $::HttpConfig
@@ -476,7 +512,7 @@ GET /t
 
 
 
-=== TEST 13: poll() is safe to be called in contexts that don't support ngx.sleep()
+=== TEST 14: poll() is safe to be called in contexts that don't support ngx.sleep()
 --- http_config eval
 qq{
     $::HttpConfig
