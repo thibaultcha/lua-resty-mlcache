@@ -222,7 +222,7 @@ local function shmlru_get(self, key)
 
         local value, err = unmarshallers[value_type](str_serialized)
         if err then
-            return nil, "could not deserialize table after lua_shared_dict " ..
+            return nil, "could not deserialize value after lua_shared_dict " ..
                         "retrieval: " .. err
         end
 
@@ -261,7 +261,7 @@ local function shmlru_set(self, key, value, ttl, neg_ttl)
 
     local str_marshalled, err = marshallers[value_type](value)
     if not str_marshalled then
-        return nil, "could not serialize table for lua_shared_dict insertion: "
+        return nil, "could not serialize value for lua_shared_dict insertion: "
                     .. err
     end
 
@@ -398,6 +398,37 @@ function _M:get(key, opts, cb, ...)
     end
 
     return unlock_and_ret(lock, value)
+end
+
+
+function _M:probe(key)
+    if type(key) ~= "string" then
+        return error("key must be a string")
+    end
+
+    local v, err = self.dict:get(key)
+    if err then
+        return nil, "could not read from lua_shared_dict: " .. err
+    end
+
+    if v ~= nil then
+        local str_serialized, value_type, at, ttl = unmarshallers.shm_value(v)
+
+        local remaining_ttl = ttl - (now() - at)
+
+        -- value_type of 0 is a nil entry
+        if value_type == 0 then
+            return remaining_ttl
+        end
+
+        local value, err = unmarshallers[value_type](str_serialized)
+        if err then
+            return nil, "could not deserialize value after lua_shared_dict " ..
+                        "retrieval: " .. err
+        end
+
+        return remaining_ttl, nil, value
+    end
 end
 
 
