@@ -1,32 +1,21 @@
 -- vim: st=4 sts=4 sw=4 et:
 
-local ffi        = require "ffi"
 local cjson      = require "cjson.safe"
 local lrucache   = require "resty.lrucache"
 local resty_lock = require "resty.lock"
 
 
 local now          = ngx.now
+local fmt          = string.format
+local sub          = string.sub
+local find         = string.find
 local type         = type
 local pcall        = pcall
 local error        = error
 local shared       = ngx.shared
-local ffi_str      = ffi.string
-local ffi_cast     = ffi.cast
 local tostring     = tostring
 local tonumber     = tonumber
 local setmetatable = setmetatable
-
-
-ffi.cdef [[
-    struct shm_value {
-        unsigned int    type;
-        unsigned int    len;
-        unsigned char  *data;
-        double          at;
-        double          ttl;
-    };
-]]
 
 
 local marshallers
@@ -46,33 +35,13 @@ local TYPES_LOOKUP = {
 
 
 do
-    local str_const       = ffi.typeof("unsigned char *")
-    local shm_value_const = ffi.typeof("const struct shm_value*")
-    local shm_value_size  = ffi.sizeof("struct shm_value")
-    local shm_value_cdata = ffi.new("struct shm_value")
-
-    local shm_value_nil_cdata = ffi.new("struct shm_value")
-    shm_value_nil_cdata.len   = 0
-    shm_value_nil_cdata.data  = ffi_cast(str_const, "")
-    shm_value_nil_cdata.type  = 0
-
-
     marshallers = {
         shm_value = function(str_value, value_type, at, ttl)
-            shm_value_cdata.ttl  = ttl
-            shm_value_cdata.at   = at
-            shm_value_cdata.len  = #str_value
-            shm_value_cdata.data = ffi_cast(str_const, str_value)
-            shm_value_cdata.type = value_type
-
-            return ffi_str(shm_value_cdata, shm_value_size)
+            return fmt("%d:%d:%d:%s", value_type, at, ttl, str_value)
         end,
 
         shm_nil = function(at, ttl)
-            shm_value_nil_cdata.at  = at
-            shm_value_nil_cdata.ttl = ttl
-
-            return ffi_str(shm_value_nil_cdata, shm_value_size)
+            return fmt("0:%d:%d:", at, ttl)
         end,
 
         [1] = function(number) -- number
@@ -100,11 +69,14 @@ do
 
     unmarshallers = {
         shm_value = function(marshalled)
-            local shm_value = ffi_cast(shm_value_const, marshalled)
+            local ttl_last = find(marshalled, ":", 14, true) - 1
 
-            local value = ffi_str(shm_value.data, shm_value.len)
+            local value_type = sub(marshalled, 1, 1)
+            local at         = sub(marshalled, 3, 12)
+            local ttl        = sub(marshalled, 14, ttl_last)
+            local str_value  = sub(marshalled, ttl_last + 2)
 
-            return value, shm_value.type, shm_value.at, shm_value.ttl
+            return str_value, tonumber(value_type), tonumber(at), tonumber(ttl)
         end,
 
         [1] = function(str) -- number
