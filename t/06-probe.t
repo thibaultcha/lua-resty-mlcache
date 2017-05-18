@@ -108,7 +108,7 @@ ttl: nil
                 return
             end
 
-            ngx.say("ttl: ", ttl)
+            ngx.say("ttl: ", math.ceil(ttl))
 
             ngx.sleep(1)
 
@@ -170,7 +170,7 @@ ttl: 18
                 return
             end
 
-            ngx.say("ttl: ", ttl, " val: ", val)
+            ngx.say("ttl: ", math.ceil(ttl), " val: ", val)
 
             local ttl, err, val = cache:probe("my_nil_key")
             if err then
@@ -178,7 +178,7 @@ ttl: 18
                 return
             end
 
-            ngx.say("ttl: ", ttl, " nil_val: ", val)
+            ngx.say("ttl: ", math.ceil(ttl), " nil_val: ", val)
         }
     }
 --- request
