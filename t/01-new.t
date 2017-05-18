@@ -5,7 +5,7 @@ use Cwd qw(cwd);
 
 repeat_each(2);
 
-plan tests => repeat_each() * (blocks() * 3);
+plan tests => repeat_each() * (blocks() * 3) + 4;
 
 my $pwd = cwd();
 
@@ -148,7 +148,7 @@ GET /t
 --- response_body
 
 --- error_log
-lru_size must be a number
+opts.lru_size must be a number
 
 
 
@@ -165,6 +165,13 @@ lru_size must be a number
             if not ok then
                 ngx.log(ngx.ERR, err)
             end
+
+            local ok, err = pcall(mlcache.new, "cache", {
+                ttl = -1
+            })
+            if not ok then
+                ngx.log(ngx.ERR, err)
+            end
         }
     }
 --- request
@@ -172,7 +179,8 @@ GET /t
 --- response_body
 
 --- error_log
-ttl must be a number
+opts.ttl must be a number
+opts.ttl must be >= 0
 
 
 
@@ -189,6 +197,13 @@ ttl must be a number
             if not ok then
                 ngx.log(ngx.ERR, err)
             end
+
+            local ok, err = pcall(mlcache.new, "cache", {
+                neg_ttl = -1
+            })
+            if not ok then
+                ngx.log(ngx.ERR, err)
+            end
         }
     }
 --- request
@@ -196,7 +211,8 @@ GET /t
 --- response_body
 
 --- error_log
-neg_ttl must be a number
+opts.neg_ttl must be a number
+opts.neg_ttl must be >= 0
 
 
 

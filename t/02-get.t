@@ -575,52 +575,31 @@ GET /t
 
 
 
-=== TEST 13: get() caches hit for 'ttl'
+=== TEST 13: get() caches hit for 'ttl' from LRU (in ms)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache", {
-                ttl = 1
-            })
-            if not cache then
-                ngx.log(ngx.ERR, err)
-                return
-            end
+            local cache = assert(mlcache.new("cache", { ttl = 0.3 }))
 
             local function cb()
                 ngx.say("in callback")
                 return 123
             end
 
-            local data, err = cache:get("key", nil, cb)
-            if err then
-                ngx.log(ngx.ERR, err)
-                return
-            end
-
+            local data = assert(cache:get("key", nil, cb))
             assert(data == 123)
 
-            ngx.sleep(0.5)
+            ngx.sleep(0.2)
 
-            data, err = cache:get("key", nil, cb)
-            if err then
-                ngx.log(ngx.ERR, err)
-                return
-            end
-
+            data = assert(cache:get("key", nil, cb))
             assert(data == 123)
 
-            ngx.sleep(0.5)
+            ngx.sleep(0.2)
 
-            data, err = cache:get("key", nil, cb)
-            if err then
-                ngx.log(ngx.ERR, err)
-                return
-            end
-
+            data = assert(cache:get("key", nil, cb))
             assert(data == 123)
         }
     }
@@ -634,21 +613,17 @@ in callback
 
 
 
-=== TEST 14: get() caches miss (nil) for 'neg_ttl'
+=== TEST 14: get() caches miss (nil) for 'neg_ttl' from LRU (in ms)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache", {
+            local cache = assert(mlcache.new("cache", {
                 ttl     = 10,
-                neg_ttl = 1
-            })
-            if not cache then
-                ngx.log(ngx.ERR, err)
-                return
-            end
+                neg_ttl = 0.3
+            }))
 
             local function cb()
                 ngx.say("in callback")
@@ -656,31 +631,19 @@ in callback
             end
 
             local data, err = cache:get("key", nil, cb)
-            if err then
-                ngx.log(ngx.ERR, err)
-                return
-            end
-
+            assert(err == nil, err)
             assert(data == nil)
 
-            ngx.sleep(0.5)
+            ngx.sleep(0.2)
 
             data, err = cache:get("key", nil, cb)
-            if err then
-                ngx.log(ngx.ERR, err)
-                return
-            end
-
+            assert(err == nil, err)
             assert(data == nil)
 
-            ngx.sleep(0.5)
+            ngx.sleep(0.2)
 
             data, err = cache:get("key", nil, cb)
-            if err then
-                ngx.log(ngx.ERR, err)
-                return
-            end
-
+            assert(err == nil, err)
             assert(data == nil)
         }
     }
@@ -694,7 +657,182 @@ in callback
 
 
 
-=== TEST 15: get() caches for 'opts.ttl'
+=== TEST 15: get() caches for 'opts.ttl' from LRU (in ms)
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("cache", { ttl = 10 }))
+
+            local function cb()
+                ngx.say("in callback")
+                return 123
+            end
+
+            local data = assert(cache:get("key", { ttl = 0.3 }, cb))
+            assert(data == 123)
+
+            ngx.sleep(0.2)
+
+            data = assert(cache:get("key", nil, cb))
+            assert(data == 123)
+
+            ngx.sleep(0.2)
+
+            data = assert(cache:get("key", nil, cb))
+            assert(data == 123)
+        }
+    }
+--- request
+GET /t
+--- response_body
+in callback
+in callback
+--- no_error_log
+[error]
+
+
+
+=== TEST 16: get() caches for 'opts.neg_ttl' from LRU (in ms)
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("cache", { neg_ttl = 2 }))
+
+            local function cb()
+                ngx.say("in callback")
+                return nil
+            end
+
+            local data, err = cache:get("key", { neg_ttl = 0.3 }, cb)
+            assert(err == nil, err)
+            assert(data == nil)
+
+            ngx.sleep(0.2)
+
+            data, err = cache:get("key", nil, cb)
+            assert(err == nil, err)
+            assert(data == nil)
+
+            ngx.sleep(0.2)
+
+            data, err = cache:get("key", nil, cb)
+            assert(err == nil, err)
+            assert(data == nil)
+        }
+    }
+--- request
+GET /t
+--- response_body
+in callback
+in callback
+--- no_error_log
+[error]
+
+
+
+=== TEST 17: get() with ttl of 0 means indefinite caching
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("cache", { ttl = 0.3 }))
+
+            local function cb()
+                ngx.say("in callback")
+                return 123
+            end
+
+            local data = assert(cache:get("key", { ttl = 0 }, cb))
+            assert(data == 123)
+
+            ngx.sleep(0.4)
+
+            -- still in LRU
+            local data, stale = cache.lru:get("key")
+            if stale then
+                ngx.say("in LRU after 1.1s: stale")
+
+            else
+                ngx.say("in LRU after exp: ", data)
+            end
+
+            cache.lru:delete("key")
+
+            -- still in shm
+            data = assert(cache:get("key", nil, cb))
+
+            ngx.say("in shm after exp: ", data)
+        }
+    }
+--- request
+GET /t
+--- response_body
+in callback
+in LRU after exp: 123
+in shm after exp: 123
+--- no_error_log
+[error]
+
+
+
+=== TEST 18: get() with neg_ttl of 0 means indefinite caching for nil values
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache, err = assert(mlcache.new("cache", { ttl = 0.3 }))
+
+            local function cb()
+                ngx.say("in callback")
+                return nil
+            end
+
+            local data, err = cache:get("key", { neg_ttl = 0 }, cb)
+            assert(err == nil, err)
+            assert(data == nil)
+
+            ngx.sleep(0.4)
+
+            -- still in LRU
+            local data, stale = cache.lru:get("key")
+            if stale then
+                ngx.say("in LRU after 1.1s: stale")
+
+            else
+                ngx.say("in LRU after exp: ", tostring(data))
+            end
+
+            cache.lru:delete("key")
+
+            -- still in shm
+            data, err = cache:get("key", nil, cb)
+            assert(err == nil, err)
+
+            ngx.say("in shm after exp: ", tostring(data))
+        }
+    }
+--- request
+GET /t
+--- response_body_like
+in callback
+in LRU after exp: table: \S+
+in shm after exp: nil
+--- no_error_log
+[error]
+
+
+
+=== TEST 19: get() errors when ttl < 0
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -712,46 +850,22 @@ in callback
                 return 123
             end
 
-            local data, err = cache:get("key", { ttl = 1 }, cb)
-            if err then
-                ngx.log(ngx.ERR, err)
-                return
+            local ok, err = pcall(cache.get, cache, "key", { ttl = -1 }, cb)
+            if not ok then
+                ngx.say(err)
             end
-
-            assert(data == 123)
-
-            ngx.sleep(0.5)
-
-            data, err = cache:get("key", nil, cb)
-            if err then
-                ngx.log(ngx.ERR, err)
-                return
-            end
-
-            assert(data == 123)
-
-            ngx.sleep(0.5)
-
-            data, err = cache:get("key", nil, cb)
-            if err then
-                ngx.log(ngx.ERR, err)
-                return
-            end
-
-            assert(data == 123)
         }
     }
 --- request
 GET /t
 --- response_body
-in callback
-in callback
+opts.ttl must be >= 0
 --- no_error_log
 [error]
 
 
 
-=== TEST 16: get() shm -> LRU caches for 'opts.ttl - since'
+=== TEST 20: get() errors when neg_ttl < 0
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -769,177 +883,133 @@ in callback
                 return 123
             end
 
-            -- from callback
-
-            local data, err = cache:get("key", { ttl = 1 }, cb)
-            if err then
-                ngx.log(ngx.ERR, err)
-                return
+            local ok, err = pcall(cache.get, cache, "key", { neg_ttl = -1 }, cb)
+            if not ok then
+                ngx.say(err)
             end
-
-            assert(data == 123)
-
-            ngx.sleep(0.5)
-
-            -- delete from LRU
-
-            cache.lru:delete("key")
-
-            -- from shm
-
-            data, err = cache:get("key", nil, cb)
-            if err then
-                ngx.log(ngx.ERR, err)
-                return
-            end
-
-            assert(data == 123)
-
-            ngx.sleep(0.5)
-
-            -- from callback again
-
-            data, err = cache:get("key", nil, cb)
-            if err then
-                ngx.log(ngx.ERR, err)
-                return
-            end
-
-            assert(data == 123)
         }
     }
 --- request
 GET /t
 --- response_body
-in callback
-in callback
+opts.neg_ttl must be >= 0
 --- no_error_log
 [error]
 
 
 
-=== TEST 17: get() caches for 'opts.neg_ttl'
+=== TEST 21: get() shm -> LRU caches for 'opts.ttl - since' in ms
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache", {
-                neg_ttl = 2
-            })
-            if not cache then
-                ngx.log(ngx.ERR, err)
-                return
-            end
+            local cache = assert(mlcache.new("cache"))
 
             local function cb()
-                ngx.say("in callback")
-                return nil
+                return 123
             end
 
-            local data, err = cache:get("key", { neg_ttl = 1 }, cb)
-            if err then
-                ngx.log(ngx.ERR, err)
-                return
+            local data = assert(cache:get("key", { ttl = 0.5 }, cb))
+            assert(data == 123)
+
+            ngx.sleep(0.2)
+
+            -- delete from LRU
+            cache.lru:delete("key")
+
+            -- from shm, setting LRU with smaller ttl
+            data, err = assert(cache:get("key", nil, cb))
+            assert(data == 123)
+
+            ngx.sleep(0.2)
+
+            -- still in LRU
+            local data, stale = cache.lru:get("key")
+            if stale then
+                ngx.say("is stale in LRU: ", stale)
+
+            else
+                ngx.say("is not expired in LRU: ", data)
             end
 
-            assert(data == nil)
+            ngx.sleep(0.1)
 
-            ngx.sleep(0.5)
+            -- expired in LRU
+            local data, stale = cache.lru:get("key")
+            if stale then
+                ngx.say("is stale in LRU: ", stale)
 
-            data, err = cache:get("key", nil, cb)
-            if err then
-                ngx.log(ngx.ERR, err)
-                return
+            else
+                ngx.say("is not expired in LRU: ", data)
             end
-
-            assert(data == nil)
-
-            ngx.sleep(0.5)
-
-            data, err = cache:get("key", nil, cb)
-            if err then
-                ngx.log(ngx.ERR, err)
-                return
-            end
-
-            assert(data == nil)
         }
     }
 --- request
 GET /t
 --- response_body
-in callback
-in callback
+is not expired in LRU: 123
+is stale in LRU: 123
 --- no_error_log
 [error]
 
 
 
-=== TEST 18: get() shm -> LRU caches for 'opts.neg_ttl - since'
+=== TEST 22: get() shm -> LRU caches for 'opts.neg_ttl - since' in ms
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache", {
-                neg_ttl = 2
-            })
-            if not cache then
-                ngx.log(ngx.ERR, err)
-                return
-            end
+            local cache = assert(mlcache.new("cache"))
 
             local function cb()
-                ngx.say("in callback")
                 return nil
             end
 
-            -- from callback
-
-            local data, err = cache:get("key", { neg_ttl = 1 }, cb)
-            if err then
-                ngx.log(ngx.ERR, err)
-                return
-            end
-
+            local data, err = cache:get("key", { neg_ttl = 0.5 }, cb)
+            assert(err == nil, err)
             assert(data == nil)
 
-            ngx.sleep(0.5)
+            ngx.sleep(0.2)
 
             -- delete from LRU
-
             cache.lru:delete("key")
 
-            -- from shm
-
+            -- from shm, setting LRU with smaller ttl
             data, err = cache:get("key", nil, cb)
-            if err then
-                ngx.log(ngx.ERR, err)
-                return
-            end
-
+            assert(err == nil, err)
             assert(data == nil)
 
-            ngx.sleep(0.5)
+            ngx.sleep(0.2)
 
-            -- from callback again
+            -- still in LRU
+            local data, stale = cache.lru:get("key")
+            if stale then
+                ngx.say("is stale in LRU: ", tostring(stale))
 
-            data, err = cache:get("key", nil, cb)
-            if err then
-                ngx.log(ngx.ERR, err)
-                return
+            else
+                ngx.say("is not expired in LRU: ", tostring(data))
             end
 
-            assert(data == nil)
+            ngx.sleep(0.1)
+
+            -- expired in LRU
+            local data, stale = cache.lru:get("key")
+            if stale then
+                ngx.say("is stale in LRU: ", tostring(stale))
+
+            else
+                ngx.say("is not expired in LRU: ", tostring(data))
+            end
         }
     }
 --- request
 GET /t
---- response_body
-in callback
-in callback
+--- response_body_like
+is not expired in LRU: table: \S+
+is stale in LRU: table: \S+
 --- no_error_log
 [error]

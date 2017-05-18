@@ -9,6 +9,7 @@ local now          = ngx.now
 local fmt          = string.format
 local sub          = string.sub
 local find         = string.find
+local huge         = math.huge
 local type         = type
 local pcall        = pcall
 local error        = error
@@ -16,10 +17,6 @@ local shared       = ngx.shared
 local tostring     = tostring
 local tonumber     = tonumber
 local setmetatable = setmetatable
-
-
-local marshallers
-local unmarshallers
 
 
 local LOCK_KEY_PREFIX         = "lua-resty-mlcache:lock:"
@@ -34,73 +31,71 @@ local TYPES_LOOKUP = {
 }
 
 
-do
-    marshallers = {
-        shm_value = function(str_value, value_type, at, ttl)
-            return fmt("%d:%d:%d:%s", value_type, at, ttl, str_value)
-        end,
+local marshallers = {
+    shm_value = function(str_value, value_type, at, ttl)
+        return fmt("%d:%f:%f:%s", value_type, at, ttl, str_value)
+    end,
 
-        shm_nil = function(at, ttl)
-            return fmt("0:%d:%d:", at, ttl)
-        end,
+    shm_nil = function(at, ttl)
+        return fmt("0:%f:%f:", at, ttl)
+    end,
 
-        [1] = function(number) -- number
-            return tostring(number)
-        end,
+    [1] = function(number) -- number
+        return tostring(number)
+    end,
 
-        [2] = function(bool)   -- boolean
-            return bool and "true" or "false"
-        end,
+    [2] = function(bool)   -- boolean
+        return bool and "true" or "false"
+    end,
 
-        [3] = function(str)    -- string
-            return str
-        end,
+    [3] = function(str)    -- string
+        return str
+    end,
 
-        [4] = function(t)      -- table
-            local json, err = cjson.encode(t)
-            if not json then
-                return nil, "could not encode table value: " .. err
-            end
+    [4] = function(t)      -- table
+        local json, err = cjson.encode(t)
+        if not json then
+            return nil, "could not encode table value: " .. err
+        end
 
-            return json
-        end,
-    }
+        return json
+    end,
+}
 
 
-    unmarshallers = {
-        shm_value = function(marshalled)
-            local ttl_last = find(marshalled, ":", 14, true) - 1
+local unmarshallers = {
+    shm_value = function(marshalled)
+        local ttl_last = find(marshalled, ":", 21, true) - 1
 
-            local value_type = sub(marshalled, 1, 1)
-            local at         = sub(marshalled, 3, 12)
-            local ttl        = sub(marshalled, 14, ttl_last)
-            local str_value  = sub(marshalled, ttl_last + 2)
+        local value_type = sub(marshalled, 1, 1)
+        local at         = sub(marshalled, 3, 19)
+        local ttl        = sub(marshalled, 21, ttl_last)
+        local str_value  = sub(marshalled, ttl_last + 2)
 
-            return str_value, tonumber(value_type), tonumber(at), tonumber(ttl)
-        end,
+        return str_value, tonumber(value_type), tonumber(at), tonumber(ttl)
+    end,
 
-        [1] = function(str) -- number
-            return tonumber(str)
-        end,
+    [1] = function(str) -- number
+        return tonumber(str)
+    end,
 
-        [2] = function(str) -- boolean
-            return str == "true"
-        end,
+    [2] = function(str) -- boolean
+        return str == "true"
+    end,
 
-        [3] = function(str) -- string
-            return str
-        end,
+    [3] = function(str) -- string
+        return str
+    end,
 
-        [4] = function(str) -- table
-            local t, err = cjson.decode(str)
-            if not t then
-                return nil, "could not decode table value: " .. err
-            end
+    [4] = function(str) -- table
+        local t, err = cjson.decode(str)
+        if not t then
+            return nil, "could not decode table value: " .. err
+        end
 
-            return t
-        end,
-    }
-end
+        return t
+    end,
+}
 
 
 local _M = {}
@@ -121,12 +116,24 @@ function _M.new(shm, opts)
             return error("opts.lru_size must be a number")
         end
 
-        if opts.ttl and type(opts.ttl) ~= "number" then
-            return error("opts.ttl must be a number")
+        if opts.ttl then
+            if type(opts.ttl) ~= "number" then
+                return error("opts.ttl must be a number")
+            end
+
+            if opts.ttl < 0 then
+                return error("opts.ttl must be >= 0")
+            end
         end
 
-        if opts.neg_ttl and type(opts.neg_ttl) ~= "number" then
-            return error("opts.neg_ttl must be a number")
+        if opts.neg_ttl then
+            if type(opts.neg_ttl) ~= "number" then
+                return error("opts.neg_ttl must be a number")
+            end
+
+            if opts.neg_ttl < 0 then
+                return error("opts.neg_ttl must be >= 0")
+            end
         end
 
         if opts.ipc_shm and type(opts.ipc_shm) ~= "string" then
@@ -171,6 +178,10 @@ end
 
 
 local function set_lru(self, key, value, ttl)
+    if ttl == 0 then
+        ttl = huge
+    end
+
     self.lru:set(key, value, ttl)
 
     return value
@@ -219,7 +230,7 @@ local function shmlru_set(self, key, value, ttl, neg_ttl)
 
         -- set our own worker's LRU cache
 
-        self.lru:set(key, CACHE_MISS_SENTINEL_LRU, neg_ttl)
+        set_lru(self, key, CACHE_MISS_SENTINEL_LRU, neg_ttl)
 
         return nil
     end
@@ -283,12 +294,24 @@ function _M:get(key, opts, cb, ...)
             return error("opts must be a table")
         end
 
-        if opts.ttl and type(opts.ttl) ~= "number" then
-            return error("opts.ttl must be a number")
+        if opts.ttl then
+            if type(opts.ttl) ~= "number" then
+                return error("opts.ttl must be a number")
+            end
+
+            if opts.ttl < 0 then
+                return error("opts.ttl must be >= 0")
+            end
         end
 
-        if opts.neg_ttl and type(opts.neg_ttl) ~= "number" then
-            return error("opts.neg_ttl must be a number")
+        if opts.neg_ttl then
+            if type(opts.neg_ttl) ~= "number" then
+                return error("opts.neg_ttl must be a number")
+            end
+
+            if opts.neg_ttl < 0 then
+                return error("opts.neg_ttl must be >= 0")
+            end
         end
 
         ttl     = opts.ttl
