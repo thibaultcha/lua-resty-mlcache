@@ -107,16 +107,16 @@ function _M.new(shm, opts)
         return error("shm must be a string")
     end
 
-    if opts then
+    if opts ~= nil then
         if type(opts) ~= "table" then
             return error("opts must be a table")
         end
 
-        if opts.lru_size and type(opts.lru_size) ~= "number" then
+        if opts.lru_size ~= nil and type(opts.lru_size) ~= "number" then
             return error("opts.lru_size must be a number")
         end
 
-        if opts.ttl then
+        if opts.ttl ~= nil then
             if type(opts.ttl) ~= "number" then
                 return error("opts.ttl must be a number")
             end
@@ -126,7 +126,7 @@ function _M.new(shm, opts)
             end
         end
 
-        if opts.neg_ttl then
+        if opts.neg_ttl ~= nil then
             if type(opts.neg_ttl) ~= "number" then
                 return error("opts.neg_ttl must be a number")
             end
@@ -136,7 +136,7 @@ function _M.new(shm, opts)
             end
         end
 
-        if opts.ipc_shm and type(opts.ipc_shm) ~= "string" then
+        if opts.ipc_shm ~= nil and type(opts.ipc_shm) ~= "string" then
             return error("opts.ipc_shm must be a string")
         end
 
@@ -289,12 +289,12 @@ function _M:get(key, opts, cb, ...)
     local ttl
     local neg_ttl
 
-    if opts then
+    if opts ~= nil then
         if type(opts) ~= "table" then
             return error("opts must be a table")
         end
 
-        if opts.ttl then
+        if opts.ttl ~= nil then
             if type(opts.ttl) ~= "number" then
                 return error("opts.ttl must be a number")
             end
@@ -304,7 +304,7 @@ function _M:get(key, opts, cb, ...)
             end
         end
 
-        if opts.neg_ttl then
+        if opts.neg_ttl ~= nil then
             if type(opts.neg_ttl) ~= "number" then
                 return error("opts.neg_ttl must be a number")
             end
