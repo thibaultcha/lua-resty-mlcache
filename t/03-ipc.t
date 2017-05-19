@@ -6,7 +6,7 @@ use Cwd qw(cwd);
 
 workers(1);
 
-plan tests => repeat_each() * (blocks() * 5) + 4;
+plan tests => repeat_each() * (blocks() * 5);
 
 my $pwd = cwd();
 
@@ -15,14 +15,22 @@ our $HttpConfig = qq{
     lua_shared_dict  ipc 1m;
 
     init_by_lua_block {
-        -- tamper with shm record and set a different pid
-        function unset_pid(ipc, idx)
-            local v = assert(ngx.shared.ipc:get(idx))
-            if not v then return end
-            local pid, channel, data = ipc.unmarshall(v)
-            pid = 0
-            assert(ngx.shared.ipc:set(idx, ipc.marshall(pid, channel, data)))
+        -- local verbose = true
+        local verbose = false
+        local outfile = "$Test::Nginx::Util::ErrLogFile"
+        -- local outfile = "/tmp/v.log"
+        if verbose then
+            local dump = require "jit.dump"
+            dump.on(nil, outfile)
+        else
+            local v = require "jit.v"
+            v.on(outfile)
         end
+
+        require "resty.core"
+        -- jit.opt.start("hotloop=1")
+        -- jit.opt.start("loopunroll=1000000")
+        -- jit.off()
     }
 };
 
@@ -70,8 +78,6 @@ qq{
         content_by_lua_block {
             assert(ipc:broadcast("my_channel", "hello world"))
 
-            unset_pid(ipc, 1)
-
             assert(ipc:poll())
         }
     }
@@ -105,8 +111,6 @@ qq{
     location = /t {
         content_by_lua_block {
             assert(ipc:broadcast("my_channel", "hello world"))
-
-            unset_pid(ipc, 1)
 
             assert(ipc:poll())
         }
@@ -173,10 +177,6 @@ qq{
             assert(ipc:broadcast("my_channel", "msg 2"))
             assert(ipc:broadcast("my_channel", "msg 3"))
 
-            unset_pid(ipc, 1)
-            unset_pid(ipc, 2)
-            unset_pid(ipc, 3)
-
             assert(ipc:poll())
         }
     }
@@ -201,7 +201,7 @@ qq{
     init_worker_by_lua_block {
         local mlcache_ipc = require "resty.mlcache.ipc"
 
-        ipc = assert(mlcache_ipc.new("ipc", true))
+        ipc = assert(mlcache_ipc.new("ipc"))
 
         ipc:subscribe("my_channel", function(data)
             ngx.log(ngx.NOTICE, "received event from my_channel: ", data)
@@ -253,8 +253,6 @@ qq{
     location = /t {
         content_by_lua_block {
             assert(ipc:broadcast("my_channel", "hello world"))
-
-            unset_pid(ipc, 1)
 
             assert(ipc:poll())
         }
@@ -336,10 +334,6 @@ qq{
             assert(ipc:broadcast("my_channel", "hello world"))
             assert(ipc:broadcast("other_channel", "hello ipc"))
             assert(ipc:broadcast("other_channel", "hello ipc 2"))
-
-            unset_pid(ipc, 1)
-            unset_pid(ipc, 2)
-            unset_pid(ipc, 3)
 
             assert(ipc:poll())
         }
@@ -495,7 +489,6 @@ qq{
             assert(ipc:broadcast("my_channel", "msg 2"))
 
             assert(ngx.shared.ipc:set(1, false))
-            unset_pid(ipc, 2)
 
             assert(ipc:poll())
         }
@@ -550,3 +543,67 @@ GET /t
     qr/\[warn\] .*? \[ipc\] could not sleep before retry: API disabled in the context of log_by_lua/,
     qr/\[error\] .*? \[ipc\] could not get event at index: '1'/,
 ]
+
+
+
+=== TEST 15: poll() JITs
+--- http_config eval
+qq{
+    $::HttpConfig
+
+    init_worker_by_lua_block {
+        local mlcache_ipc = require "resty.mlcache.ipc"
+
+        ipc = assert(mlcache_ipc.new("ipc", true))
+
+        ipc:subscribe("my_channel", function(data)
+            ngx.log(ngx.NOTICE, "callback from my_channel: ", data)
+        end)
+    }
+}
+--- config
+    location = /t {
+        content_by_lua_block {
+            for i = 1, 10e3 do
+                assert(ipc:poll())
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body
+
+--- error_log eval
+qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):2 loop\]/
+
+
+
+=== TEST 16: broadcast() JITs
+--- http_config eval
+qq{
+    $::HttpConfig
+
+    init_worker_by_lua_block {
+        local mlcache_ipc = require "resty.mlcache.ipc"
+
+        ipc = assert(mlcache_ipc.new("ipc", true))
+
+        ipc:subscribe("my_channel", function(data)
+            ngx.log(ngx.NOTICE, "callback from my_channel: ", data)
+        end)
+    }
+}
+--- config
+    location = /t {
+        content_by_lua_block {
+            for i = 1, 10e3 do
+                assert(ipc:broadcast("my_channel", "hello world"))
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body
+
+--- error_log eval
+qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):2 loop\]/

@@ -7,13 +7,32 @@ workers(2);
 
 #repeat_each(2);
 
-plan tests => repeat_each() * (blocks() * 3) - 1;
+plan tests => repeat_each() * (blocks() * 3) + 3;
 
 my $pwd = cwd();
 
 our $HttpConfig = qq{
     lua_package_path "$pwd/lib/?.lua;;";
     lua_shared_dict  cache 1m;
+
+    init_by_lua_block {
+        -- local verbose = true
+        local verbose = false
+        local outfile = "$Test::Nginx::Util::ErrLogFile"
+        -- local outfile = "/tmp/v.log"
+        if verbose then
+            local dump = require "jit.dump"
+            dump.on(nil, outfile)
+        else
+            local v = require "jit.v"
+            v.on(outfile)
+        end
+
+        require "resty.core"
+        -- jit.opt.start("hotloop=1")
+        -- jit.opt.start("loopunroll=1000000")
+        -- jit.off()
+    }
 };
 
 run_tests();
@@ -1011,5 +1030,131 @@ GET /t
 --- response_body_like
 is not expired in LRU: table: \S+
 is stale in LRU: table: \S+
+--- no_error_log
+[error]
+
+
+
+=== TEST 23: get() JITs when hit coming from LRU
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("cache"))
+
+            local function cb()
+                return 123456
+            end
+
+            for i = 1, 10e3 do
+                local data = assert(cache:get("key", nil, cb))
+                assert(data == 123456)
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body
+
+--- error_log eval
+qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
+--- no_error_log
+[error]
+
+
+
+=== TEST 24: get() JITs when hit coming from shm
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("cache"))
+
+            local function cb()
+                return 123456
+            end
+
+            for i = 1, 10e3 do
+                local data = assert(cache:get("key", nil, cb))
+                assert(data == 123456)
+
+                cache.lru:delete("key")
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body
+
+--- error_log eval
+qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
+--- no_error_log
+[error]
+
+
+
+=== TEST 25: get() JITs when miss coming from LRU
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("cache"))
+
+            local function cb()
+                return nil
+            end
+
+            for i = 1, 10e3 do
+                local data, err = cache:get("key", nil, cb)
+                assert(err == nil)
+                assert(data == nil)
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body
+
+--- error_log eval
+qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
+--- no_error_log
+[error]
+
+
+
+=== TEST 26: get() JITs when miss coming from shm
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("cache"))
+
+            local function cb()
+                return nil
+            end
+
+            for i = 1, 10e3 do
+                local data, err = cache:get("key", nil, cb)
+                assert(err == nil)
+                assert(data == nil)
+
+                cache.lru:delete("key")
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body
+
+--- error_log eval
+qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 --- no_error_log
 [error]

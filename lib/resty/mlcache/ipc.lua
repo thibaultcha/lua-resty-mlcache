@@ -60,15 +60,10 @@ function _M.new(shm, debug)
 
     local self    = {
         dict      = dict,
-        pid       = worker_pid(),
+        pid       = debug and 0 or worker_pid(),
         idx       = 0,
         callbacks = {},
     }
-
-    if debug then
-        self.marshall   = marshall
-        self.unmarshall = unmarshall
-    end
 
     return setmetatable(self, mt)
 end
