@@ -65,12 +65,14 @@ local marshallers = {
 
 local unmarshallers = {
     shm_value = function(marshalled)
-        local ttl_last = find(marshalled, ":", 21, true) - 1
+        local sep_1 = find(marshalled, ":", 1        , true)
+        local sep_2 = find(marshalled, ":", sep_1 + 1, true)
+        local sep_3 = find(marshalled, ":", sep_2 + 1, true)
 
-        local value_type = sub(marshalled, 1, 1)
-        local at         = sub(marshalled, 3, 19)
-        local ttl        = sub(marshalled, 21, ttl_last)
-        local str_value  = sub(marshalled, ttl_last + 2)
+        local value_type = sub(marshalled, 1        , sep_1 - 1)
+        local at         = sub(marshalled, sep_1 + 1, sep_2 - 1)
+        local ttl        = sub(marshalled, sep_2 + 1, sep_3 - 1)
+        local str_value  = sub(marshalled, sep_3 + 1)
 
         return str_value, tonumber(value_type), tonumber(at), tonumber(ttl)
     end,
