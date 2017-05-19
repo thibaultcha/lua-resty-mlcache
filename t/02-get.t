@@ -7,7 +7,7 @@ workers(2);
 
 #repeat_each(2);
 
-plan tests => repeat_each() * (blocks() * 3) + 3;
+plan tests => repeat_each() * (blocks() * 3) + 5;
 
 my $pwd = cwd();
 
@@ -1065,7 +1065,7 @@ qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 
 
 
-=== TEST 24: get() JITs when hit coming from shm
+=== TEST 24: get() JITs when hit of scalar value coming from shm
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1074,15 +1074,38 @@ qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 
             local cache = assert(mlcache.new("cache"))
 
-            local function cb()
+            local function cb_number()
                 return 123456
             end
 
-            for i = 1, 10e3 do
-                local data = assert(cache:get("key", nil, cb))
+            local function cb_string()
+                return "hello"
+            end
+
+            local function cb_bool()
+                return false
+            end
+
+            for i = 1, 10e2 do
+                local data = assert(cache:get("number", nil, cb_number))
                 assert(data == 123456)
 
-                cache.lru:delete("key")
+                cache.lru:delete("number")
+            end
+
+            for i = 1, 10e2 do
+                local data = assert(cache:get("string", nil, cb_string))
+                assert(data == "hello")
+
+                cache.lru:delete("string")
+            end
+
+            for i = 1, 10e2 do
+                local data, err = cache:get("bool", nil, cb_bool)
+                assert(err == nil)
+                assert(data == false)
+
+                cache.lru:delete("bool")
             end
         }
     }
@@ -1091,13 +1114,51 @@ GET /t
 --- response_body
 
 --- error_log eval
-qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
+[
+    qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):18 loop\]/,
+    qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):25 loop\]/,
+    qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):32 loop\]/,
+]
 --- no_error_log
 [error]
 
 
 
-=== TEST 25: get() JITs when miss coming from LRU
+=== TEST 25: get() JITs when hit of table value coming from shm
+--- SKIP: blocked until custom table serializer
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("cache"))
+
+            local function cb_table()
+                return { hello = "world" }
+            end
+
+            for i = 1, 10e2 do
+                local data = assert(cache:get("table", nil, cb_table))
+                assert(type(data) == "table")
+                assert(data.hello == "world")
+
+                cache.lru:delete("table")
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body
+
+--- error_log eval
+qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):18 loop\]/
+--- no_error_log
+[error]
+
+
+
+=== TEST 26: get() JITs when miss coming from LRU
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1128,7 +1189,7 @@ qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 
 
 
-=== TEST 26: get() JITs when miss coming from shm
+=== TEST 27: get() JITs when miss coming from shm
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
