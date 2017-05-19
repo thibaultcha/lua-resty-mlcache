@@ -1,73 +1,45 @@
 -- vim: st=4 sts=4 sw=4 et:
 
-local ffi = require "ffi"
-
-
 local ERR          = ngx.ERR
 local WARN         = ngx.WARN
 local INFO         = ngx.INFO
 local sleep        = ngx.sleep
 local shared       = ngx.shared
 local worker_pid   = ngx.worker.pid
-local ngx_now      = ngx.now
 local ngx_log      = ngx.log
+local fmt          = string.format
+local sub          = string.sub
+local find         = string.find
 local min          = math.min
 local type         = type
 local pcall        = pcall
 local insert       = table.insert
-local ffi_str      = ffi.string
-local ffi_cast     = ffi.cast
+local tonumber     = tonumber
 local setmetatable = setmetatable
-
-
-ffi.cdef [[
-    struct event {
-        unsigned int    at;
-        unsigned int    pid;
-        unsigned int    data_len;
-        unsigned int    channel_len;
-        unsigned char  *channel;
-        unsigned char  *data;
-    };
-]]
 
 
 local INDEX_KEY        = "lua-resty-ipc:index"
 local POLL_SLEEP_RATIO = 2
 
 
-local str_const   = ffi.typeof("unsigned char *")
-local event_const = ffi.typeof("const struct event*")
-local event_size  = ffi.sizeof("struct event")
-local event_cdata = ffi.new("struct event")
-
-
-local function marshall(event)
-    event_cdata.at          = event.at
-    event_cdata.pid         = event.pid
-    event_cdata.data_len    = #event.data
-    event_cdata.channel_len = #event.channel
-    event_cdata.data        = ffi_cast(str_const, event.data)
-    event_cdata.channel     = ffi_cast(str_const, event.channel)
-
-    return ffi_str(event_cdata, event_size)
+local function marshall(worker_pid, channel, data)
+    return fmt("%d:%d:%s%s", worker_pid, #data, channel, data)
 end
 
 
 local function unmarshall(str)
-    local event = ffi_cast(event_const, str)
+    local sep_1 = find(str, ":", nil      , true)
+    local sep_2 = find(str, ":", sep_1 + 1, true)
 
-    return {
-        at      = event.at,
-        pid     = event.pid,
-        channel = ffi_str(event.channel, event.channel_len),
-        data    = ffi_str(event.data, event.data_len),
-    }
-end
+    local pid      = tonumber(sub(str, 1        , sep_1 - 1))
+    local data_len = tonumber(sub(str, sep_1 + 1, sep_2 - 1))
 
+    local channel_last_pos = #str - data_len
 
-local function now()
-    return ngx_now() * 1000
+    local channel = sub(str, sep_2 + 1, channel_last_pos)
+    local data    = sub(str, channel_last_pos + 1)
+
+    return pid, channel, data
 end
 
 
@@ -129,12 +101,7 @@ function _M:broadcast(channel, data)
         return error("data must be a string")
     end
 
-    local marshalled_event = marshall {
-        at      = now(),
-        pid     = worker_pid(),
-        channel = channel,
-        data    = data,
-    }
+    local marshalled_event = marshall(worker_pid(), channel, data)
 
     local idx, err = self.dict:incr(INDEX_KEY, 1, 0)
     if not idx then
@@ -227,16 +194,16 @@ function _M:poll(max_event_wait)
                      "shm tampered with")
 
         else
-            local event = unmarshall(v)
+            local pid, channel, data = unmarshall(v)
 
-            if self.pid ~= event.pid then
+            if self.pid ~= pid then
                 -- coming from another worker
-                local cbs = self.callbacks[event.channel]
+                local cbs = self.callbacks[channel]
                 if cbs then
                     for j = 1, #cbs do
-                        local pok, perr = pcall(cbs[j], event.data)
+                        local pok, perr = pcall(cbs[j], data)
                         if not pok then
-                            log(ERR, "callback for channel '", event.channel,
+                            log(ERR, "callback for channel '", channel,
                                      "' threw a Lua error: ", perr)
                         end
                     end

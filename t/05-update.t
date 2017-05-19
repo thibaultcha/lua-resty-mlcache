@@ -22,9 +22,9 @@ our $HttpConfig = qq{
         function unset_pid(ipc, idx)
             local v = assert(ngx.shared.ipc:get(idx))
             if not v then return end
-            local event = ipc.unmarshall(v)
-            event.pid   = 0
-            assert(ngx.shared.ipc:set(idx, ipc.marshall(event)))
+            local pid, channel, data = ipc.unmarshall(v)
+            pid = 0
+            assert(ngx.shared.ipc:set(idx, ipc.marshall(pid, channel, data)))
         end
     }
 };
