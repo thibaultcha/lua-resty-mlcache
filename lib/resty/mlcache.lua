@@ -16,6 +16,7 @@ local error        = error
 local shared       = ngx.shared
 local tostring     = tostring
 local tonumber     = tonumber
+local insert       = table.insert
 local setmetatable = setmetatable
 
 
@@ -151,12 +152,13 @@ function _M.new(shm, opts)
         return nil, "no such lua_shared_dict: " .. shm
     end
 
-    local self  = {
-        lru     = lrucache.new(opts.lru_size or 100),
-        dict    = dict,
-        shm     = shm,
-        ttl     = opts.ttl     or 30,
-        neg_ttl = opts.neg_ttl or 5
+    local self     = {
+        lru        = lrucache.new(opts.lru_size or 100), -- default lru
+        lrus       = {},
+        dict       = dict,
+        shm        = shm,
+        ttl        = opts.ttl     or 30,
+        neg_ttl    = opts.neg_ttl or 5,
     }
 
     if opts.ipc_shm then
@@ -172,6 +174,10 @@ function _M.new(shm, opts)
 
         self.ipc:subscribe(self.ipc_invalidation_channel, function(key)
             self.lru:delete(key)
+
+            for i = 1, #self.lrus do
+                self.lrus[i]:delete(key)
+            end
         end)
     end
 
@@ -179,18 +185,37 @@ function _M.new(shm, opts)
 end
 
 
-local function set_lru(self, key, value, ttl)
+function _M:add_lru(name, lru)
+    if type(name) ~= "string" or #name == 0 then
+        return error("name must be a non-empty string")
+    end
+
+    if type(lru) ~= "table" then
+        return error("lru appears not to be a lua-resty-lrucache instance")
+    end
+
+    if self.lrus[name] then
+        return error("an lru named '" .. name .. "' has already been added")
+    end
+
+    self.lrus[name] = lru
+
+    insert(self.lrus, lru)
+end
+
+
+local function set_lru(lru, key, value, ttl)
     if ttl == 0 then
         ttl = huge
     end
 
-    self.lru:set(key, value, ttl)
+    lru:set(key, value, ttl)
 
     return value
 end
 
 
-local function shmlru_get(self, key)
+local function shmlru_get(self, lru, key)
     local v, err = self.dict:get(key)
     if err then
         return nil, "could not read from lua_shared_dict: " .. err
@@ -203,7 +228,7 @@ local function shmlru_get(self, key)
 
         -- value_type of 0 is a nil entry
         if value_type == 0 then
-            return set_lru(self, key, CACHE_MISS_SENTINEL_LRU, remaining_ttl)
+            return set_lru(lru, key, CACHE_MISS_SENTINEL_LRU, remaining_ttl)
         end
 
         local value, err = unmarshallers[value_type](str_serialized)
@@ -212,12 +237,12 @@ local function shmlru_get(self, key)
                         "retrieval: " .. err
         end
 
-        return set_lru(self, key, value, remaining_ttl)
+        return set_lru(lru, key, value, remaining_ttl)
     end
 end
 
 
-local function shmlru_set(self, key, value, ttl, neg_ttl)
+local function shmlru_set(self, lru, key, value, ttl, neg_ttl)
     local at = now()
 
     if value == nil then
@@ -232,7 +257,7 @@ local function shmlru_set(self, key, value, ttl, neg_ttl)
 
         -- set our own worker's LRU cache
 
-        set_lru(self, key, CACHE_MISS_SENTINEL_LRU, neg_ttl)
+        set_lru(lru, key, CACHE_MISS_SENTINEL_LRU, neg_ttl)
 
         return nil
     end
@@ -263,7 +288,7 @@ local function shmlru_set(self, key, value, ttl, neg_ttl)
 
     -- set our own worker's LRU cache
 
-    return set_lru(self, key, value, ttl)
+    return set_lru(lru, key, value, ttl)
 end
 
 
@@ -288,6 +313,7 @@ function _M:get(key, opts, cb, ...)
 
     -- opts validation
 
+    local lru
     local ttl
     local neg_ttl
 
@@ -316,8 +342,24 @@ function _M:get(key, opts, cb, ...)
             end
         end
 
+        if opts.lru ~= nil then
+            if type(opts.lru) ~= "string" or #opts.lru == 0 then
+                return error("opts.lru must be a non-empty string")
+            end
+
+            lru = self.lrus[opts.lru]
+
+            if not lru then
+                return error("no lru named '" .. opts.lru .. "'")
+            end
+        end
+
         ttl     = opts.ttl
         neg_ttl = opts.neg_ttl
+    end
+
+    if not lru then
+        lru = self.lru
     end
 
     if not ttl then
@@ -330,7 +372,7 @@ function _M:get(key, opts, cb, ...)
 
     -- worker LRU cache retrieval
 
-    local data = self.lru:get(key)
+    local data = lru:get(key)
     if data == CACHE_MISS_SENTINEL_LRU then
         return nil
     end
@@ -342,7 +384,7 @@ function _M:get(key, opts, cb, ...)
     -- not in worker's LRU cache, need shm lookup
 
     local err
-    data, err = shmlru_get(self, key)
+    data, err = shmlru_get(self, lru, key)
     if err then
         return nil, err
     end
@@ -370,7 +412,7 @@ function _M:get(key, opts, cb, ...)
 
     -- check for another worker's success at running the callback
 
-    data, err = shmlru_get(self, key)
+    data, err = shmlru_get(self, lru, key)
     if err then
         return unlock_and_ret(lock, nil, err)
     end
@@ -390,7 +432,7 @@ function _M:get(key, opts, cb, ...)
         return unlock_and_ret(lock, nil, "callback threw an error: " .. err)
     end
 
-    local value, err = shmlru_set(self, key, err, ttl, neg_ttl)
+    local value, err = shmlru_set(self, lru, key, err, ttl, neg_ttl)
     if err then
         return unlock_and_ret(lock, nil, err)
     end
@@ -440,6 +482,10 @@ function _M:delete(key)
     end
 
     self.lru:delete(key)
+
+    for i = 1, #self.lrus do
+        self.lrus[i]:delete(key)
+    end
 
     local ok, err = self.dict:delete(key)
     if not ok then
