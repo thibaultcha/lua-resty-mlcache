@@ -138,6 +138,10 @@ function _M.new(shm, opts)
             end
         end
 
+        if opts.resty_lock_opts and type(opts.resty_lock_opts) ~= "table" then
+            return error("opts.resty_lock_opts must be a table")
+        end
+
         if opts.ipc_shm ~= nil and type(opts.ipc_shm) ~= "string" then
             return error("opts.ipc_shm must be a string")
         end
@@ -151,12 +155,13 @@ function _M.new(shm, opts)
         return nil, "no such lua_shared_dict: " .. shm
     end
 
-    local self  = {
-        lru     = lrucache.new(opts.lru_size or 100),
-        dict    = dict,
-        shm     = shm,
-        ttl     = opts.ttl     or 30,
-        neg_ttl = opts.neg_ttl or 5
+    local self          = {
+        lru             = lrucache.new(opts.lru_size or 100),
+        dict            = dict,
+        shm             = shm,
+        ttl             = opts.ttl     or 30,
+        neg_ttl         = opts.neg_ttl or 5,
+        resty_lock_opts = opts.resty_lock_opts,
     }
 
     if opts.ipc_shm then
@@ -358,7 +363,7 @@ function _M:get(key, opts, cb, ...)
     -- not in shm either
     -- single worker must execute the callback
 
-    local lock, err = resty_lock:new(self.shm)
+    local lock, err = resty_lock:new(self.shm, self.resty_lock_opts)
     if not lock then
         return nil, "could not create lock: " .. err
     end
