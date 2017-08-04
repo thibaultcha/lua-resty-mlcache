@@ -1035,7 +1035,83 @@ is stale in LRU: table: \S+
 
 
 
-=== TEST 23: get() JITs when hit coming from LRU
+=== TEST 23: get() returns hit level
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("cache"))
+
+            local function cb()
+                return 123
+            end
+
+            local _, _, hit_lvl = assert(cache:get("key", nil, cb))
+            ngx.say("hit level from callback: ", hit_lvl)
+
+            _, _, hit_lvl = assert(cache:get("key", nil, cb))
+            ngx.say("hit level from LRU: ", hit_lvl)
+
+            -- delete from LRU
+
+            cache.lru:delete("key")
+
+            _, _, hit_lvl = assert(cache:get("key", nil, cb))
+            ngx.say("hit level from shm: ", hit_lvl)
+        }
+    }
+--- request
+GET /t
+--- response_body
+hit level from callback: 3
+hit level from LRU: 1
+hit level from shm: 2
+--- no_error_log
+[error]
+
+
+
+=== TEST 24: get() returns hit level for nil hits
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("cache"))
+
+            local function cb()
+                return nil
+            end
+
+            local _, _, hit_lvl = cache:get("key", nil, cb)
+            ngx.say("hit level from callback: ", hit_lvl)
+
+            _, _, hit_lvl = cache:get("key", nil, cb)
+            ngx.say("hit level from LRU: ", hit_lvl)
+
+            -- delete from LRU
+
+            cache.lru:delete("key")
+
+            _, _, hit_lvl = cache:get("key", nil, cb)
+            ngx.say("hit level from shm: ", hit_lvl)
+        }
+    }
+--- request
+GET /t
+--- response_body
+hit level from callback: 3
+hit level from LRU: 1
+hit level from shm: 2
+--- no_error_log
+[error]
+
+
+
+=== TEST 25: get() JITs when hit coming from LRU
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1065,7 +1141,7 @@ qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 
 
 
-=== TEST 24: get() JITs when hit of scalar value coming from shm
+=== TEST 26: get() JITs when hit of scalar value coming from shm
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1124,7 +1200,7 @@ GET /t
 
 
 
-=== TEST 25: get() JITs when hit of table value coming from shm
+=== TEST 27: get() JITs when hit of table value coming from shm
 --- SKIP: blocked until custom table serializer
 --- http_config eval: $::HttpConfig
 --- config
@@ -1158,7 +1234,7 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):18 loop\]/
 
 
 
-=== TEST 26: get() JITs when miss coming from LRU
+=== TEST 28: get() JITs when miss coming from LRU
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1189,7 +1265,7 @@ qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 
 
 
-=== TEST 27: get() JITs when miss coming from shm
+=== TEST 29: get() JITs when miss coming from shm
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
