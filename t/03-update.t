@@ -72,10 +72,10 @@ no ipc to update from
 
             local cache = assert(mlcache.new("cache", {
                 ipc_shm = "ipc",
-                debug = true
+                debug = true -- allows same worker to receive its own published events
             }))
 
-            cache.ipc:subscribe("lua-resty-mlcache:invalidations", function(data)
+            cache.ipc:subscribe("lua-resty-mlcache:invalidations:" .. cache.namespace, function(data)
                 ngx.log(ngx.NOTICE, "received event from invalidations: ", data)
             end)
 
