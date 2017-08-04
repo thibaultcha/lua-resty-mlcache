@@ -155,8 +155,11 @@ function _M.new(shm, opts)
         return nil, "no such lua_shared_dict: " .. shm
     end
 
+    local lru = lrucache.new(opts.lru_size or 100)
+
     local self          = {
-        lru             = lrucache.new(opts.lru_size or 100),
+        lru             = lru,
+        namespace       = fmt("%p", lru),
         dict            = dict,
         shm             = shm,
         ttl             = opts.ttl     or 30,
@@ -172,8 +175,11 @@ function _M.new(shm, opts)
             return nil, "could not instanciate mlcache.ipc: " .. err
         end
 
+        local channel = fmt("lua-resty-mlcache:invalidations:%s",
+                            self.namespace)
+
         self.ipc = ipc
-        self.ipc_invalidation_channel = "lua-resty-mlcache:invalidations"
+        self.ipc_invalidation_channel = channel
 
         self.ipc:subscribe(self.ipc_invalidation_channel, function(key)
             self.lru:delete(key)
@@ -195,8 +201,8 @@ local function set_lru(self, key, value, ttl)
 end
 
 
-local function shmlru_get(self, key)
-    local v, err = self.dict:get(key)
+local function shmlru_get(self, key, shm_key)
+    local v, err = self.dict:get(shm_key)
     if err then
         return nil, "could not read from lua_shared_dict: " .. err
     end
@@ -222,7 +228,7 @@ local function shmlru_get(self, key)
 end
 
 
-local function shmlru_set(self, key, value, ttl, neg_ttl)
+local function shmlru_set(self, key, shm_key, value, ttl, neg_ttl)
     local at = now()
 
     if value == nil then
@@ -230,7 +236,7 @@ local function shmlru_set(self, key, value, ttl, neg_ttl)
 
         -- we need to cache that this was a miss, and ensure cache hit for a
         -- nil value
-        local ok, err = self.dict:set(key, shm_nil, neg_ttl)
+        local ok, err = self.dict:set(shm_key, shm_nil, neg_ttl)
         if not ok then
             return nil, "could not write to lua_shared_dict: " .. err
         end
@@ -261,7 +267,7 @@ local function shmlru_set(self, key, value, ttl, neg_ttl)
 
     -- cache value in shm for currently-locked workers
 
-    local ok, err = self.dict:set(key, shm_marshalled, ttl)
+    local ok, err = self.dict:set(shm_key, shm_marshalled, ttl)
     if not ok then
         return nil, "could not write to lua_shared_dict: " .. err
     end
@@ -346,8 +352,13 @@ function _M:get(key, opts, cb, ...)
 
     -- not in worker's LRU cache, need shm lookup
 
+    -- restrict this key to the current namespace, so we isolate this
+    -- mlcache instance from potential other instances using the same
+    -- shm
+    local namespaced_key = self.namespace .. key
+
     local err
-    data, err = shmlru_get(self, key)
+    data, err = shmlru_get(self, key, namespaced_key)
     if err then
         return nil, err
     end
@@ -368,14 +379,14 @@ function _M:get(key, opts, cb, ...)
         return nil, "could not create lock: " .. err
     end
 
-    local elapsed, err = lock:lock(LOCK_KEY_PREFIX .. key)
+    local elapsed, err = lock:lock(LOCK_KEY_PREFIX .. namespaced_key)
     if not elapsed then
         return nil, "could not aquire callback lock: " .. err
     end
 
     -- check for another worker's success at running the callback
 
-    data, err = shmlru_get(self, key)
+    data, err = shmlru_get(self, key, namespaced_key)
     if err then
         return unlock_and_ret(lock, nil, err)
     end
@@ -395,7 +406,7 @@ function _M:get(key, opts, cb, ...)
         return unlock_and_ret(lock, nil, "callback threw an error: " .. err)
     end
 
-    local value, err = shmlru_set(self, key, err, ttl, neg_ttl)
+    local value, err = shmlru_set(self, key, namespaced_key, err, ttl, neg_ttl)
     if err then
         return unlock_and_ret(lock, nil, err)
     end
@@ -409,7 +420,12 @@ function _M:probe(key)
         return error("key must be a string")
     end
 
-    local v, err = self.dict:get(key)
+    -- restrict this key to the current namespace, so we isolate this
+    -- mlcache instance from potential other instances using the same
+    -- shm
+    local namespaced_key = self.namespace .. key
+
+    local v, err = self.dict:get(namespaced_key)
     if err then
         return nil, "could not read from lua_shared_dict: " .. err
     end
@@ -446,9 +462,16 @@ function _M:delete(key)
 
     self.lru:delete(key)
 
-    local ok, err = self.dict:delete(key)
-    if not ok then
-        return nil, "could not delete from shm: " .. err
+    do
+        -- restrict this key to the current namespace, so we isolate this
+        -- mlcache instance from potential other instances using the same
+        -- shm
+        local namespaced_key = self.namespace .. key
+
+        local ok, err = self.dict:delete(namespaced_key)
+        if not ok then
+            return nil, "could not delete from shm: " .. err
+        end
     end
 
     local ok, err = self.ipc:broadcast(self.ipc_invalidation_channel, key)

@@ -81,32 +81,51 @@ key must be a string
                 return value
             end
 
+            -- set a value (callback call)
+
             local data = assert(cache:get("key", nil, cb))
-            ngx.say(data)
+            ngx.say("from callback: ", data)
+
+            -- get a value (no callback call)
 
             data = assert(cache:get("key", nil, cb))
-            ngx.say(data)
+            ngx.say("from LRU: ", data)
+
+            -- test if value is set from shm (safer to check due to the key)
+
+            local v = ngx.shared.cache:get(cache.namespace .. "key")
+            ngx.say("shm has value before delete: ", v ~= nil)
+
+            -- delete the value
 
             assert(cache:delete("key"))
 
-            local v = ngx.shared.cache:get("key")
-            ngx.say(v)
+            local v = ngx.shared.cache:get(cache.namespace .. "key")
+            ngx.say("shm has value after delete: ", v ~= nil)
 
             -- ensure LRU was also deleted
+
+            v = cache.lru:get("key")
+            ngx.say("from LRU: ", v)
+
+            -- start over from callback again
+
             value = 456
 
             data = assert(cache:get("key", nil, cb))
-            ngx.say(data)
+            ngx.say("from callback: ", data)
         }
     }
 --- request
 GET /t
 --- response_body
 in callback
-123
-123
-nil
+from callback: 123
+from LRU: 123
+shm has value before delete: true
+shm has value after delete: false
+from LRU: nil
 in callback
-456
+from callback: 456
 --- no_error_log
 [error]
