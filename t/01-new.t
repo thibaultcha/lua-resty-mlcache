@@ -241,3 +241,27 @@ number
 number
 --- no_error_log
 [error]
+
+
+
+=== TEST 10: new() accepts user-provided LRU instances
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache          = require "resty.mlcache"
+            local pureffi_lrucache = require "resty.lrucache.pureffi"
+
+            local my_lru = pureffi_lrucache.new(100)
+
+            local cache = assert(mlcache.new("cache", { lru = my_lru }))
+
+            ngx.say("lru is user-provided: ", cache.lru == my_lru)
+        }
+    }
+--- request
+GET /t
+--- response_body
+lru is user-provided: true
+--- no_error_log
+[error]
