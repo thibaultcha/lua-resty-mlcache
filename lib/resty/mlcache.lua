@@ -158,17 +158,16 @@ function _M.new(shm, opts)
         return nil, "no such lua_shared_dict: " .. shm
     end
 
-    local lru = lrucache.new(opts.lru_size or 100)
-
     local self          = {
-        lru             = lru,
-        namespace       = fmt("%p", lru),
+        lru             = opts.lru     or lrucache.new(opts.lru_size or 100),
         dict            = dict,
         shm             = shm,
         ttl             = opts.ttl     or 30,
         neg_ttl         = opts.neg_ttl or 5,
         resty_lock_opts = opts.resty_lock_opts,
     }
+
+    self.namespace = fmt("%p", self)
 
     if opts.ipc_shm then
         local mlcache_ipc = require "resty.mlcache.ipc"
