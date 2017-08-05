@@ -106,44 +106,46 @@ local mt = { __index = _M }
 
 function _M.new(shm, opts)
     if type(shm) ~= "string" then
-        return error("shm must be a string")
+        error("shm must be a string", 2)
     end
 
     if opts ~= nil then
         if type(opts) ~= "table" then
-            return error("opts must be a table")
+            error("opts must be a table", 2)
         end
 
         if opts.lru_size ~= nil and type(opts.lru_size) ~= "number" then
-            return error("opts.lru_size must be a number")
+            error("opts.lru_size must be a number", 2)
         end
 
         if opts.ttl ~= nil then
             if type(opts.ttl) ~= "number" then
-                return error("opts.ttl must be a number")
+                error("opts.ttl must be a number", 2)
             end
 
             if opts.ttl < 0 then
-                return error("opts.ttl must be >= 0")
+                error("opts.ttl must be >= 0", 2)
             end
         end
 
         if opts.neg_ttl ~= nil then
             if type(opts.neg_ttl) ~= "number" then
-                return error("opts.neg_ttl must be a number")
+                error("opts.neg_ttl must be a number", 2)
             end
 
             if opts.neg_ttl < 0 then
-                return error("opts.neg_ttl must be >= 0")
+                error("opts.neg_ttl must be >= 0", 2)
             end
         end
 
-        if opts.resty_lock_opts and type(opts.resty_lock_opts) ~= "table" then
-            return error("opts.resty_lock_opts must be a table")
+        if opts.resty_lock_opts ~= nil
+            and type(opts.resty_lock_opts) ~= "table"
+        then
+            error("opts.resty_lock_opts must be a table", 2)
         end
 
         if opts.ipc_shm ~= nil and type(opts.ipc_shm) ~= "string" then
-            return error("opts.ipc_shm must be a string")
+            error("opts.ipc_shm must be a string", 2)
         end
 
     else
@@ -247,7 +249,7 @@ local function shmlru_set(self, key, value, ttl, neg_ttl)
     local value_type = TYPES_LOOKUP[type(value)]
 
     if not marshallers[value_type] then
-        return error("cannot cache value of type " .. type(value))
+        error("cannot cache value of type " .. type(value))
     end
 
     local str_marshalled, err = marshallers[value_type](value)
@@ -284,11 +286,11 @@ end
 
 function _M:get(key, opts, cb, ...)
     if type(key) ~= "string" then
-        return error("key must be a string")
+        error("key must be a string", 2)
     end
 
     if type(cb) ~= "function" then
-        return error("callback must be a function")
+        error("callback must be a function", 2)
     end
 
     -- opts validation
@@ -298,26 +300,26 @@ function _M:get(key, opts, cb, ...)
 
     if opts ~= nil then
         if type(opts) ~= "table" then
-            return error("opts must be a table")
+            error("opts must be a table", 2)
         end
 
         if opts.ttl ~= nil then
             if type(opts.ttl) ~= "number" then
-                return error("opts.ttl must be a number")
+                error("opts.ttl must be a number", 2)
             end
 
             if opts.ttl < 0 then
-                return error("opts.ttl must be >= 0")
+                error("opts.ttl must be >= 0", 2)
             end
         end
 
         if opts.neg_ttl ~= nil then
             if type(opts.neg_ttl) ~= "number" then
-                return error("opts.neg_ttl must be a number")
+                error("opts.neg_ttl must be a number", 2)
             end
 
             if opts.neg_ttl < 0 then
-                return error("opts.neg_ttl must be >= 0")
+                error("opts.neg_ttl must be >= 0", 2)
             end
         end
 
@@ -406,7 +408,7 @@ end
 
 function _M:probe(key)
     if type(key) ~= "string" then
-        return error("key must be a string")
+        error("key must be a string", 2)
     end
 
     local v, err = self.dict:get(key)
@@ -437,7 +439,7 @@ end
 
 function _M:delete(key)
     if type(key) ~= "string" then
-        return error("key must be a string")
+        error("key must be a string", 2)
     end
 
     if not self.ipc then
