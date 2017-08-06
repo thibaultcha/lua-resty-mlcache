@@ -50,7 +50,9 @@ no ipc to propagate deletion
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache"))
+            local cache = assert(mlcache.new("cache", {
+                ipc_shm = "ipc",
+            }))
 
             local ok, err = pcall(cache.delete, cache, 123)
             ngx.say(err)
@@ -127,5 +129,35 @@ shm has value after delete: false
 from LRU: nil
 in callback
 from callback: 456
+--- no_error_log
+[error]
+
+
+
+=== TEST 4: delete() invalidates other workers' LRU cache
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("cache", {
+                ipc_shm = "ipc",
+                debug   = true, -- allows same worker to receive its own published events
+            }))
+
+            cache.ipc:subscribe("lua-resty-mlcache:invalidations:" .. cache.namespace, function(data)
+                ngx.say("received event from invalidations: ", data)
+            end)
+
+            assert(cache:delete("my_key"))
+
+            assert(cache:update())
+        }
+    }
+--- request
+GET /t
+--- response_body
+received event from invalidations: my_key
 --- no_error_log
 [error]
