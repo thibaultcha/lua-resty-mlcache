@@ -192,7 +192,17 @@ function _M.new(shm, opts)
 end
 
 
-local function set_lru(self, key, value, ttl)
+local function set_lru(self, key, value, ttl, neg_ttl)
+    if value == nil then
+        if neg_ttl == 0 then
+            neg_ttl = huge
+        end
+
+        self.lru:set(key, CACHE_MISS_SENTINEL_LRU, neg_ttl)
+
+        return CACHE_MISS_SENTINEL_LRU
+    end
+
     if ttl == 0 then
         ttl = huge
     end
@@ -203,34 +213,7 @@ local function set_lru(self, key, value, ttl)
 end
 
 
-local function shmlru_get(self, key, shm_key)
-    local v, err = self.dict:get(shm_key)
-    if err then
-        return nil, "could not read from lua_shared_dict: " .. err
-    end
-
-    if v ~= nil then
-        local str_serialized, value_type, at, ttl = unmarshallers.shm_value(v)
-
-        local remaining_ttl = ttl - (now() - at)
-
-        -- value_type of 0 is a nil entry
-        if value_type == 0 then
-            return set_lru(self, key, CACHE_MISS_SENTINEL_LRU, remaining_ttl)
-        end
-
-        local value, err = unmarshallers[value_type](str_serialized)
-        if err then
-            return nil, "could not deserialize value after lua_shared_dict " ..
-                        "retrieval: " .. err
-        end
-
-        return set_lru(self, key, value, remaining_ttl)
-    end
-end
-
-
-local function shmlru_set(self, key, shm_key, value, ttl, neg_ttl)
+local function set_shm(self, shm_key, value, ttl, neg_ttl)
     local at = now()
 
     if value == nil then
@@ -243,11 +226,7 @@ local function shmlru_set(self, key, shm_key, value, ttl, neg_ttl)
             return nil, "could not write to lua_shared_dict: " .. err
         end
 
-        -- set our own worker's LRU cache
-
-        set_lru(self, key, CACHE_MISS_SENTINEL_LRU, neg_ttl)
-
-        return nil
+        return true
     end
 
     -- serialize insertion time + Lua types for shm storage
@@ -274,9 +253,79 @@ local function shmlru_set(self, key, shm_key, value, ttl, neg_ttl)
         return nil, "could not write to lua_shared_dict: " .. err
     end
 
-    -- set our own worker's LRU cache
+    return true
+end
 
-    return set_lru(self, key, value, ttl)
+
+local function get_shm_set_lru(self, key, shm_key)
+    local v, err = self.dict:get(shm_key)
+    if err then
+        return nil, "could not read from lua_shared_dict: " .. err
+    end
+
+    if v ~= nil then
+        local str_serialized, value_type, at, ttl = unmarshallers.shm_value(v)
+
+        local remaining_ttl = ttl - (now() - at)
+
+        -- value_type of 0 is a nil entry
+        if value_type == 0 then
+            return set_lru(self, key, nil, remaining_ttl, remaining_ttl)
+        end
+
+        local value, err = unmarshallers[value_type](str_serialized)
+        if err then
+            return nil, "could not deserialize value after lua_shared_dict " ..
+                        "retrieval: " .. err
+        end
+
+        return set_lru(self, key, value, remaining_ttl, remaining_ttl)
+    end
+end
+
+
+local function check_opts(self, opts)
+    local ttl
+    local neg_ttl
+
+    if opts ~= nil then
+        if type(opts) ~= "table" then
+            error("opts must be a table", 3)
+        end
+
+        if opts.ttl ~= nil then
+            if type(opts.ttl) ~= "number" then
+                error("opts.ttl must be a number", 3)
+            end
+
+            if opts.ttl < 0 then
+                error("opts.ttl must be >= 0", 3)
+            end
+        end
+
+        if opts.neg_ttl ~= nil then
+            if type(opts.neg_ttl) ~= "number" then
+                error("opts.neg_ttl must be a number", 3)
+            end
+
+            if opts.neg_ttl < 0 then
+                error("opts.neg_ttl must be >= 0", 3)
+            end
+        end
+
+        ttl     = opts.ttl
+        neg_ttl = opts.neg_ttl
+    end
+
+    if not ttl then
+        ttl = self.ttl
+    end
+
+    if not neg_ttl then
+        neg_ttl = self.neg_ttl
+    end
+
+    return ttl, neg_ttl
 end
 
 
@@ -301,45 +350,7 @@ function _M:get(key, opts, cb, ...)
 
     -- opts validation
 
-    local ttl
-    local neg_ttl
-
-    if opts ~= nil then
-        if type(opts) ~= "table" then
-            error("opts must be a table", 2)
-        end
-
-        if opts.ttl ~= nil then
-            if type(opts.ttl) ~= "number" then
-                error("opts.ttl must be a number", 2)
-            end
-
-            if opts.ttl < 0 then
-                error("opts.ttl must be >= 0", 2)
-            end
-        end
-
-        if opts.neg_ttl ~= nil then
-            if type(opts.neg_ttl) ~= "number" then
-                error("opts.neg_ttl must be a number", 2)
-            end
-
-            if opts.neg_ttl < 0 then
-                error("opts.neg_ttl must be >= 0", 2)
-            end
-        end
-
-        ttl     = opts.ttl
-        neg_ttl = opts.neg_ttl
-    end
-
-    if not ttl then
-        ttl = self.ttl
-    end
-
-    if not neg_ttl then
-        neg_ttl = self.neg_ttl
-    end
+    local ttl, neg_ttl = check_opts(self, opts)
 
     -- worker LRU cache retrieval
 
@@ -360,7 +371,7 @@ function _M:get(key, opts, cb, ...)
     local namespaced_key = self.namespace .. key
 
     local err
-    data, err = shmlru_get(self, key, namespaced_key)
+    data, err = get_shm_set_lru(self, key, namespaced_key)
     if err then
         return nil, err
     end
@@ -388,7 +399,7 @@ function _M:get(key, opts, cb, ...)
 
     -- check for another worker's success at running the callback
 
-    data, err = shmlru_get(self, key, namespaced_key)
+    data, err = get_shm_set_lru(self, key, namespaced_key)
     if err then
         return unlock_and_ret(lock, nil, err)
     end
@@ -408,12 +419,22 @@ function _M:get(key, opts, cb, ...)
         return unlock_and_ret(lock, nil, "callback threw an error: " .. err)
     end
 
-    local value, err = shmlru_set(self, key, namespaced_key, err, ttl, neg_ttl)
-    if err then
+    data = err
+
+    -- set shm cache level
+
+    local ok, err = set_shm(self, namespaced_key, data, ttl, neg_ttl)
+    if not ok then
         return unlock_and_ret(lock, nil, err)
     end
 
-    return unlock_and_ret(lock, value, nil, 3)
+    -- set our own worker's LRU cache
+
+    set_lru(self, key, data, ttl, neg_ttl)
+
+    -- unlock and return
+
+    return unlock_and_ret(lock, data, nil, 3)
 end
 
 
@@ -453,13 +474,44 @@ function _M:probe(key)
 end
 
 
-function _M:delete(key)
+function _M:set(key, opts, value)
+    if not self.ipc then
+        return nil, "no ipc to propagate update"
+    end
+
     if type(key) ~= "string" then
         error("key must be a string", 2)
     end
 
+    do
+        -- restrict this key to the current namespace, so we isolate this
+        -- mlcache instance from potential other instances using the same
+        -- shm
+        local ttl, neg_ttl   = check_opts(self, opts)
+        local namespaced_key = self.namespace .. key
+
+        local ok, err = set_shm(self, namespaced_key, value, ttl, neg_ttl)
+        if not ok then
+            return nil, err
+        end
+    end
+
+    local ok, err = self.ipc:broadcast(self.ipc_invalidation_channel, key)
+    if not ok then
+        return nil, "could not broadcast update: " .. err
+    end
+
+    return true
+end
+
+
+function _M:delete(key)
     if not self.ipc then
         return nil, "no ipc to propagate deletion"
+    end
+
+    if type(key) ~= "string" then
+        error("key must be a string", 2)
     end
 
     self.lru:delete(key)
