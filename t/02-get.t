@@ -825,7 +825,7 @@ in shm after exp: 123
             -- still in LRU
             local data, stale = cache.lru:get("key")
             if stale then
-                ngx.say("in LRU after 1.1s: stale")
+                ngx.say("in LRU after 0.4s: stale")
 
             else
                 ngx.say("in LRU after exp: ", tostring(data))
