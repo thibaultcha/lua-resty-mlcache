@@ -1343,7 +1343,7 @@ in callback 2
 
 
 
-=== TEST 30: get() allows callback second return value overriding neg_ttl
+=== TEST 31: get() allows callback second return value overriding neg_ttl
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1388,7 +1388,7 @@ in callback 2
 
 
 
-=== TEST 30: get() ignores invalid callback second return value
+=== TEST 32: get() ignores invalid callback second return value
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
