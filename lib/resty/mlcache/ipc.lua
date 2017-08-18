@@ -13,6 +13,7 @@ local find         = string.find
 local min          = math.min
 local type         = type
 local pcall        = pcall
+local error        = error
 local insert       = table.insert
 local tonumber     = tonumber
 local setmetatable = setmetatable
