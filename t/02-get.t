@@ -1295,3 +1295,154 @@ GET /t
 qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 --- no_error_log
 [error]
+
+
+
+=== TEST 30: get() allows callback second return value overriding ttl
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local opts  = { ttl = 10 }
+            local cache = assert(mlcache.new("cache", opts))
+
+            local function cb()
+                ngx.say("in callback")
+                return 1, 0.1
+            end
+
+            local function cb2()
+                ngx.say("in callback 2")
+                return 2
+            end
+
+            local data, err = cache:get("key", opts, cb)
+            assert(err == nil, err)
+            assert(data == 1)
+
+            data, err = cache:get("key", opts, cb2)
+            assert(err == nil, err)
+            assert(data == 1)
+
+            ngx.sleep(0.1)
+
+            data, err = cache:get("key", opts, cb2)
+            assert(err == nil, err)
+            assert(data == 2)
+        }
+    }
+--- request
+GET /t
+--- response_body
+in callback
+in callback 2
+--- no_error_log
+[error]
+
+
+
+=== TEST 30: get() allows callback second return value overriding neg_ttl
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local opts  = { ttl = 10, neg_ttl = 10 }
+            local cache = assert(mlcache.new("cache", opts))
+
+            local function cb()
+                ngx.say("in callback")
+                return nil, 0.1
+            end
+
+            local function cb2()
+                ngx.say("in callback 2")
+                return 1
+            end
+
+            local data, err = cache:get("key", opts, cb)
+            assert(err == nil, err)
+            assert(data == nil)
+
+            data, err = cache:get("key", opts, cb2)
+            assert(err == nil, err)
+            assert(data == nil)
+
+            ngx.sleep(0.1)
+
+            data, err = cache:get("key", opts, cb2)
+            assert(err == nil, err)
+            assert(data == 1)
+        }
+    }
+--- request
+GET /t
+--- response_body
+in callback
+in callback 2
+--- no_error_log
+[error]
+
+
+
+=== TEST 30: get() ignores invalid callback second return value
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local opts  = { ttl = 0.1, neg_ttl = 0.1 }
+            local cache = assert(mlcache.new("cache", opts))
+
+            local function pos_cb()
+                ngx.say("in positive callback")
+                return 1, "success"
+            end
+
+            local function neg_cb()
+                ngx.say("in negative callback")
+                return nil, -1
+            end
+
+            local data, err = cache:get("pos_key", opts, pos_cb)
+            assert(err == nil, err)
+            assert(data == 1)
+
+            data, err = cache:get("pos_key", opts, neg_cb)
+            assert(err == nil, err)
+            assert(data == 1)
+
+            ngx.sleep(0.1)
+
+            data, err = cache:get("pos_key", opts, neg_cb)
+            assert(err == nil, err)
+            assert(data == nil)
+
+            local data, err = cache:get("neg_key", opts, neg_cb)
+            assert(err == nil, err)
+            assert(data == nil)
+
+            data, err = cache:get("neg_key", opts, pos_cb)
+            assert(err == nil, err)
+            assert(data == nil)
+
+            ngx.sleep(0.1)
+
+            data, err = cache:get("neg_key", opts, pos_cb)
+            assert(err == nil, err)
+            assert(data == 1)
+        }
+    }
+--- request
+GET /t
+--- response_body
+in positive callback
+in negative callback
+in negative callback
+in positive callback
+--- no_error_log
+[error]
