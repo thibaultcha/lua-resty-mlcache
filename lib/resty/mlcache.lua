@@ -307,28 +307,27 @@ local function check_opts(self, opts)
             error("opts must be a table", 3)
         end
 
-        if opts.ttl ~= nil then
-            if type(opts.ttl) ~= "number" then
+        ttl = opts.ttl
+        if ttl ~= nil then
+            if type(ttl) ~= "number" then
                 error("opts.ttl must be a number", 3)
             end
 
-            if opts.ttl < 0 then
+            if ttl < 0 then
                 error("opts.ttl must be >= 0", 3)
             end
         end
 
-        if opts.neg_ttl ~= nil then
-            if type(opts.neg_ttl) ~= "number" then
+        neg_ttl = opts.neg_ttl
+        if neg_ttl ~= nil then
+            if type(neg_ttl) ~= "number" then
                 error("opts.neg_ttl must be a number", 3)
             end
 
-            if opts.neg_ttl < 0 then
+            if neg_ttl < 0 then
                 error("opts.neg_ttl must be >= 0", 3)
             end
         end
-
-        ttl     = opts.ttl
-        neg_ttl = opts.neg_ttl
     end
 
     if not ttl then
@@ -361,10 +360,6 @@ function _M:get(key, opts, cb, ...)
     if type(cb) ~= "function" then
         error("callback must be a function", 2)
     end
-
-    -- opts validation
-
-    local ttl, neg_ttl = check_opts(self, opts)
 
     -- worker LRU cache retrieval
 
@@ -400,6 +395,10 @@ function _M:get(key, opts, cb, ...)
 
     -- not in shm either
     -- single worker must execute the callback
+
+    -- opts validation
+
+    local ttl, neg_ttl = check_opts(self, opts)
 
     local lock, err = resty_lock:new(self.shm, self.resty_lock_opts)
     if not lock then
