@@ -348,10 +348,6 @@ function _M:get(key, opts, cb, ...)
         error("callback must be a function", 2)
     end
 
-    -- opts validation
-
-    local ttl, neg_ttl = check_opts(self, opts)
-
     -- worker LRU cache retrieval
 
     local data = self.lru:get(key)
@@ -411,6 +407,10 @@ function _M:get(key, opts, cb, ...)
 
         return unlock_and_ret(lock, data, nil, 2)
     end
+
+    -- opts validation
+
+    local ttl, neg_ttl = check_opts(self, opts)
 
     -- still not in shm, we are responsible for running the callback
 
