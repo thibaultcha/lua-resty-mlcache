@@ -428,12 +428,23 @@ function _M:get(key, opts, cb, ...)
 
     -- still not in shm, we are responsible for running the callback
 
-    local ok, err = pcall(cb, ...)
+    local ok, err, new_ttl = pcall(cb, ...)
     if not ok then
         return unlock_and_ret(lock, nil, "callback threw an error: " .. err)
     end
 
     data = err
+
+    -- override ttl / neg_ttl
+
+    if type(new_ttl) == "number" and new_ttl >= 0 then
+        if data == nil then
+            neg_ttl = new_ttl
+
+        else
+            ttl = new_ttl
+        end
+    end
 
     -- set shm cache level
 

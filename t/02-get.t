@@ -1382,3 +1382,184 @@ GET /t
 qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 --- no_error_log
 [error]
+
+
+
+=== TEST 30: get() allows callback second return value overriding ttl
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local opts  = { ttl = 10 }
+            local cache = assert(mlcache.new("cache", opts))
+
+            local function cb()
+                ngx.say("in callback 1")
+                return 1, 0.1
+            end
+
+            local function cb2()
+                ngx.say("in callback 2")
+                return 2
+            end
+
+            -- cache our value (runs cb)
+
+            local data, err = cache:get("key", opts, cb)
+            assert(err == nil, err)
+            assert(data == 1)
+
+            -- should not run cb2
+
+            data, err = cache:get("key", opts, cb2)
+            assert(err == nil, err)
+            assert(data == 1)
+
+            ngx.sleep(0.15)
+
+            -- should run cb2 (value expired)
+
+            data, err = cache:get("key", opts, cb2)
+            assert(err == nil, err)
+            assert(data == 2)
+        }
+    }
+--- request
+GET /t
+--- response_body
+in callback 1
+in callback 2
+--- no_error_log
+[error]
+
+
+
+=== TEST 31: get() allows callback second return value overriding neg_ttl
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local opts  = { ttl = 10, neg_ttl = 10 }
+            local cache = assert(mlcache.new("cache", opts))
+
+            local function cb()
+                ngx.say("in callback 1")
+                return nil, 0.1
+            end
+
+            local function cb2()
+                ngx.say("in callback 2")
+                return 1
+            end
+
+            -- cache our value (runs cb)
+
+            local data, err = cache:get("key", opts, cb)
+            assert(err == nil, err)
+            assert(data == nil)
+
+            -- should not run cb2
+
+            data, err = cache:get("key", opts, cb2)
+            assert(err == nil, err)
+            assert(data == nil)
+
+            ngx.sleep(0.15)
+
+            -- should run cb2 (value expired)
+
+            data, err = cache:get("key", opts, cb2)
+            assert(err == nil, err)
+            assert(data == 1)
+        }
+    }
+--- request
+GET /t
+--- response_body
+in callback 1
+in callback 2
+--- no_error_log
+[error]
+
+
+
+=== TEST 32: get() ignores invalid callback second return value
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local opts  = { ttl = 0.1, neg_ttl = 0.1 }
+            local cache = assert(mlcache.new("cache", opts))
+
+            local function pos_cb()
+                ngx.say("in positive callback")
+                return 1, "success"
+            end
+
+            local function neg_cb()
+                ngx.say("in negative callback")
+                return nil, -1
+            end
+
+            ngx.say("Test A: string TTL return value is ignored")
+
+            -- cache our value (runs pos_cb)
+
+            local data, err = cache:get("pos_key", opts, pos_cb)
+            assert(err == nil, err)
+            assert(data == 1)
+
+            -- neg_cb should not run
+
+            data, err = cache:get("pos_key", opts, neg_cb)
+            assert(err == nil, err)
+            assert(data == 1)
+
+            ngx.sleep(0.15)
+
+            -- should run neg_cb
+
+            data, err = cache:get("pos_key", opts, neg_cb)
+            assert(err == nil, err)
+            assert(data == nil)
+
+            ngx.say("Test B: negative TTL return value is ignored")
+
+            -- cache our value (runs neg_cb)
+
+            data, err = cache:get("neg_key", opts, neg_cb)
+            assert(err == nil, err)
+            assert(data == nil)
+
+            -- pos_cb should not run
+
+            data, err = cache:get("neg_key", opts, pos_cb)
+            assert(err == nil, err)
+            assert(data == nil)
+
+            ngx.sleep(0.15)
+
+            -- should run pos_cb
+
+            data, err = cache:get("neg_key", opts, pos_cb)
+            assert(err == nil, err)
+            assert(data == 1)
+        }
+    }
+--- request
+GET /t
+--- response_body
+Test A: string TTL return value is ignored
+in positive callback
+in negative callback
+Test B: negative TTL return value is ignored
+in negative callback
+in positive callback
+--- no_error_log
+[error]
