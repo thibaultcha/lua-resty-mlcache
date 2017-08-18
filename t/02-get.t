@@ -1422,7 +1422,7 @@ in callback 2
             assert(err == nil, err)
             assert(data == nil)
 
-            local data, err = cache:get("neg_key", opts, neg_cb)
+            data, err = cache:get("neg_key", opts, neg_cb)
             assert(err == nil, err)
             assert(data == nil)
 
