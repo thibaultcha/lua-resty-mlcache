@@ -5,8 +5,8 @@
 Fast multi-level key/value cache for OpenResty.
 
 - Can cache scalar Lua types and tables.
-- Provides automatic caching level fallbacks: LRU > shm > callback.
-- Can invalidate cached entities accross workers via a custom IPC
+- Provides automatic caching level fallback: LRU > shm > callback.
+- Can invalidate cached entities across workers via a custom IPC
   (inter-process communication) module.
 
 The cache level hierarchy is:
