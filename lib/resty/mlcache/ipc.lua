@@ -112,6 +112,13 @@ function _M:broadcast(channel, data)
 end
 
 
+-- Note: if this module were to be used by users (that is, users can implement
+-- their own pub/sub events and thus, callbacks), this method would then need
+-- to consider the time spent in callbacks to prevent long running callbacks
+-- from penalizing the worker.
+-- Since this module is currently only used by mlcache, whose callback is an
+-- shm operation, we only worry about the time spent waiting for events
+-- between the 'incr()' and 'set()' race condition.
 function _M:poll(timeout)
     if timeout ~= nil and type(timeout) ~= "number" then
         error("timeout must be a number", 2)

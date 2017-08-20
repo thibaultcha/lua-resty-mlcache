@@ -7,7 +7,7 @@ workers(2);
 
 #repeat_each(2);
 
-plan tests => repeat_each() * (blocks() * 3) + 2;
+plan tests => repeat_each() * (blocks() * 3) + 4;
 
 my $pwd = cwd();
 
@@ -94,7 +94,46 @@ received event from invalidations: my_key
 
 
 
-=== TEST 3: update() JITs when no events to catch up
+=== TEST 3: update() timeout when waiting for too long
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("cache", {
+                ipc_shm = "ipc",
+                debug = true -- allows same worker to receive its own published events
+            }))
+
+            cache.ipc:subscribe("lua-resty-mlcache:invalidations:" .. cache.namespace, function(data)
+                ngx.log(ngx.NOTICE, "received event from invalidations: ", data)
+            end)
+
+            assert(cache:delete("my_key"))
+            assert(cache:delete("my_other_key"))
+
+            ngx.shared.ipc:delete(2)
+
+            local ok, err = cache:update(0.1)
+            if not ok then
+                ngx.say(err)
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body
+could not poll ipc events: timeout
+--- no_error_log
+[error]
+received event from invalidations: my_other
+--- error_log
+received event from invalidations: my_key
+
+
+
+=== TEST 4: update() JITs when no events to catch up
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {

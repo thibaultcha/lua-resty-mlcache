@@ -548,12 +548,12 @@ function _M:delete(key)
 end
 
 
-function _M:update()
+function _M:update(timeout)
     if not self.ipc then
         return nil, "no ipc to update from"
     end
 
-    local ok, err = self.ipc:poll()
+    local ok, err = self.ipc:poll(timeout)
     if not ok then
         return nil, "could not poll ipc events: " .. err
     end

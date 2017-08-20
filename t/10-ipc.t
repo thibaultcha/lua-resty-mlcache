@@ -483,7 +483,6 @@ qq{
         ipc = assert(mlcache_ipc.new("ipc", true))
 
         ipc:subscribe("my_channel", function(data)
-        print("HERE")
             ngx.log(ngx.NOTICE, "callback from my_channel: ", data)
         end)
     }
