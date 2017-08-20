@@ -525,8 +525,7 @@ function _M:delete(key)
         error("key must be a string", 2)
     end
 
-    self.lru:delete(key)
-
+    -- delete from shm first
     do
         -- restrict this key to the current namespace, so we isolate this
         -- mlcache instance from potential other instances using the same
@@ -538,6 +537,9 @@ function _M:delete(key)
             return nil, "could not delete from shm: " .. err
         end
     end
+
+    -- delete from LRU and propagate
+    self.lru:delete(key)
 
     local ok, err = self.ipc:broadcast(self.ipc_invalidation_channel, key)
     if not ok then
