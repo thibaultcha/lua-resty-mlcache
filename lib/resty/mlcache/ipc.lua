@@ -112,9 +112,9 @@ function _M:broadcast(channel, data)
 end
 
 
-function _M:poll(max_event_wait)
-    if max_event_wait ~= nil and type(max_event_wait) ~= "number" then
-        return nil, "max_event_wait must be a number"
+function _M:poll(timeout)
+    if timeout ~= nil and type(timeout) ~= "number" then
+        error("timeout must be a number", 2)
     end
 
     local idx, err = self.dict:get(INDEX_KEY)
@@ -131,37 +131,33 @@ function _M:poll(max_event_wait)
         return nil, "index is not a number, shm tampered with"
     end
 
-    for _ = self.idx, idx - 1 do
-        self.idx = self.idx + 1
+    if not timeout then
+        timeout = 0.3
+    end
 
+    local elapsed = 0
+
+    for _ = self.idx, idx - 1 do
         -- fetch event from shm with a retry policy in case
         -- we run our :get() in between another worker's
         -- :incr() and :set()
 
         local v
+        local idx = self.idx + 1
 
         do
             local perr
             local pok        = true
-            local elapsed    = 0
             local sleep_step = 0.001
 
-            if not max_event_wait then
-                max_event_wait = 0.3
-            end
-
-            while elapsed < max_event_wait do
-                v, err = self.dict:get(self.idx)
-                if err then
-                    log(ERR, "failed to get event from shm: ", err)
-                end
-
+            while elapsed < timeout do
+                v, err = self.dict:get(idx)
                 if v ~= nil or err then
                     break
                 end
 
                 if pok then
-                    log(INFO, "no event data at index '", self.idx, "', ",
+                    log(INFO, "no event data at index '", idx, "', ",
                               "retrying in: ", sleep_step, "s")
 
                     -- sleep is not available in all ngx_lua contexts
@@ -170,19 +166,29 @@ function _M:poll(max_event_wait)
                     if not pok then
                         log(WARN, "could not sleep before retry: ", perr,
                                   " (note: it is safer to call this function ",
-                                  " in contexts that support the ngx.sleep()",
-                                  " API)")
+                                  "in contexts that support the ngx.sleep() ",
+                                  "API)")
                     end
                 end
 
                 elapsed    = elapsed + sleep_step
                 sleep_step = min(sleep_step * POLL_SLEEP_RATIO,
-                                 max_event_wait - elapsed)
+                                 timeout - elapsed)
             end
         end
 
-        if v == nil then
-            log(ERR, "could not get event at index: '", self.idx, "'")
+        -- fetch next event on next iteration
+        -- even if we timeout, we might miss 1 event (we return in timeout and
+        -- we don't retry that event), but it's better than being stuck forever
+        -- on an event that might have been evicted from the shm.
+        self.idx = idx
+
+        if elapsed >= timeout then
+            return nil, "timeout"
+        end
+
+        if err then
+            log(ERR, "could not get event at index '", self.idx, "': ", err)
 
         elseif type(v) ~= "string" then
             log(ERR, "event at index '", self.idx, "' is not a string, ",

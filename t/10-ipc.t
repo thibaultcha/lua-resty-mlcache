@@ -126,7 +126,7 @@ lua entry thread aborted: runtime error
 
 
 
-=== TEST 4: poll() catches invalid max_event_wait arg
+=== TEST 4: poll() catches invalid timeout arg
 --- http_config eval
 qq{
     $::HttpConfig
@@ -140,7 +140,7 @@ qq{
 --- config
     location = /t {
         content_by_lua_block {
-            local ok, err = ipc:poll(false)
+            local ok, err = pcall(ipc.poll, ipc, false)
             if not ok then
                 ngx.say(err)
             end
@@ -149,7 +149,7 @@ qq{
 --- request
 GET /t
 --- response_body
-max_event_wait must be a number
+timeout must be a number
 --- no_error_log
 [error]
 
@@ -387,7 +387,7 @@ index is not a number, shm tampered with
 
 
 
-=== TEST 11: poll() retries getting an event if not yet inserted
+=== TEST 11: poll() retries getting an event until timeout
 --- http_config eval
 qq{
     $::HttpConfig
@@ -406,7 +406,10 @@ qq{
             ngx.shared.ipc:delete(1)
             ngx.shared.ipc:flush_expired()
 
-            ipc:poll()
+            local ok, err = ipc:poll()
+            if not ok then
+                ngx.log(ngx.ERR, "could not poll: ", err)
+            end
         }
     }
 --- request
@@ -424,12 +427,12 @@ GET /t
     qr/\[info\] .*? \[ipc\] no event data at index '1', retrying in: 0\.064s/,
     qr/\[info\] .*? \[ipc\] no event data at index '1', retrying in: 0\.128s/,
     qr/\[info\] .*? \[ipc\] no event data at index '1', retrying in: 0\.045s/,
-    qr/\[error\] .*? \[ipc\] could not get event at index: '1'/,
+    qr/\[error\] .*? could not poll: timeout/,
 ]
 
 
 
-=== TEST 12: poll() get event retries never exceeds max_sleep
+=== TEST 12: poll() reaches custom timeout
 --- http_config eval
 qq{
     $::HttpConfig
@@ -448,7 +451,10 @@ qq{
             ngx.shared.ipc:delete(1)
             ngx.shared.ipc:flush_expired()
 
-            ipc:poll(0.01)
+            local ok, err = ipc:poll(0.01)
+            if not ok then
+                ngx.log(ngx.ERR, "could not poll: ", err)
+            end
         }
     }
 --- request
@@ -461,7 +467,7 @@ GET /t
     qr/\[info\] .*? \[ipc\] no event data at index '1', retrying in: 0\.002s/,
     qr/\[info\] .*? \[ipc\] no event data at index '1', retrying in: 0\.004s/,
     qr/\[info\] .*? \[ipc\] no event data at index '1', retrying in: 0\.003s/,
-    qr/\[error\] .*? \[ipc\] could not get event at index: '1'/,
+    qr/\[error\] .*? could not poll: timeout/,
 ]
 
 
@@ -530,7 +536,10 @@ qq{
             ngx.shared.ipc:delete(1)
             ngx.shared.ipc:flush_expired()
 
-            assert(ipc:poll())
+            local ok, err = ipc:poll()
+            if not ok then
+                ngx.log(ngx.ERR, "could not poll: ", err)
+            end
         }
     }
 --- request
@@ -541,7 +550,7 @@ GET /t
 [
     qr/\[info\] .*? \[ipc\] no event data at index '1', retrying in: 0\.001s/,
     qr/\[warn\] .*? \[ipc\] could not sleep before retry: API disabled in the context of log_by_lua/,
-    qr/\[error\] .*? \[ipc\] could not get event at index: '1'/,
+    qr/\[error\] .*? could not poll: timeout/,
 ]
 
 
