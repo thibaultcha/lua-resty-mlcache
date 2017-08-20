@@ -975,7 +975,51 @@ is stale in LRU: 123
 
 
 
-=== TEST 22: get() shm -> LRU caches for 'opts.neg_ttl - since' in ms
+=== TEST 22: get() shm -> LRU caches non-nil for 'indefinite' if ttl is 0
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("cache"))
+
+            local function cb()
+                return 123
+            end
+
+            local data = assert(cache:get("key", { ttl = 0 }, cb))
+            assert(data == 123)
+
+            ngx.sleep(0.2)
+
+            -- delete from LRU
+            cache.lru:delete("key")
+
+            -- from shm, setting LRU with indefinite ttl too
+            data, err = assert(cache:get("key", nil, cb))
+            assert(data == 123)
+
+            -- still in LRU
+            local data, stale = cache.lru:get("key")
+            if stale then
+                ngx.say("is stale in LRU: ", stale)
+
+            else
+                ngx.say("is not expired in LRU: ", data)
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body
+is not expired in LRU: 123
+--- no_error_log
+[error]
+
+
+
+=== TEST 23: get() shm -> LRU caches for 'opts.neg_ttl - since' in ms
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1035,7 +1079,50 @@ is stale in LRU: table: \S+
 
 
 
-=== TEST 23: get() returns hit level
+=== TEST 24: get() shm -> LRU caches nil for 'indefinite' if neg_ttl is 0
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("cache"))
+
+            local function cb()
+                return nil
+            end
+
+            local data, err =cache:get("key", { neg_ttl = 0 }, cb)
+            assert(err == nil)
+            assert(data == nil)
+
+            ngx.sleep(0.2)
+
+            -- delete from LRU
+            cache.lru:delete("key")
+
+            -- from shm, setting LRU with indefinite ttl too
+            data, err = cache:get("key", nil, cb)
+            assert(err == nil)
+            assert(data == nil)
+
+            -- still in LRU
+            local data, stale = cache.lru:get("key")
+            ngx.say("is stale in LRU: ", stale)
+
+            -- data is a table (nil sentinel value) so rely on stale instead
+        }
+    }
+--- request
+GET /t
+--- response_body
+is stale in LRU: nil
+--- no_error_log
+[error]
+
+
+
+=== TEST 25: get() returns hit level
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1073,7 +1160,7 @@ hit level from shm: 2
 
 
 
-=== TEST 24: get() returns hit level for nil hits
+=== TEST 26: get() returns hit level for nil hits
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1111,7 +1198,7 @@ hit level from shm: 2
 
 
 
-=== TEST 25: get() JITs when hit coming from LRU
+=== TEST 27: get() JITs when hit coming from LRU
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1141,7 +1228,7 @@ qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 
 
 
-=== TEST 26: get() JITs when hit of scalar value coming from shm
+=== TEST 28: get() JITs when hit of scalar value coming from shm
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1200,7 +1287,7 @@ GET /t
 
 
 
-=== TEST 27: get() JITs when hit of table value coming from shm
+=== TEST 29: get() JITs when hit of table value coming from shm
 --- SKIP: blocked until custom table serializer
 --- http_config eval: $::HttpConfig
 --- config
@@ -1234,7 +1321,7 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):18 loop\]/
 
 
 
-=== TEST 28: get() JITs when miss coming from LRU
+=== TEST 30: get() JITs when miss coming from LRU
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1265,7 +1352,7 @@ qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 
 
 
-=== TEST 29: get() JITs when miss coming from shm
+=== TEST 31: get() JITs when miss coming from shm
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {

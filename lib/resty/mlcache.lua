@@ -9,7 +9,6 @@ local now          = ngx.now
 local fmt          = string.format
 local sub          = string.sub
 local find         = string.find
-local huge         = math.huge
 local type         = type
 local pcall        = pcall
 local error        = error
@@ -195,7 +194,8 @@ end
 local function set_lru(self, key, value, ttl, neg_ttl)
     if value == nil then
         if neg_ttl == 0 then
-            neg_ttl = huge
+            -- indefinite ttl for lua-resty-lrucache is 'nil'
+            neg_ttl = nil
         end
 
         self.lru:set(key, CACHE_MISS_SENTINEL_LRU, neg_ttl)
@@ -204,7 +204,8 @@ local function set_lru(self, key, value, ttl, neg_ttl)
     end
 
     if ttl == 0 then
-        ttl = huge
+        -- indefinite ttl for lua-resty-lrucache is 'nil'
+        ttl = nil
     end
 
     self.lru:set(key, value, ttl)
@@ -266,7 +267,15 @@ local function get_shm_set_lru(self, key, shm_key)
     if v ~= nil then
         local str_serialized, value_type, at, ttl = unmarshallers.shm_value(v)
 
-        local remaining_ttl = ttl - (now() - at)
+        local remaining_ttl
+        if ttl == 0 then
+            -- indefinite ttl, keep '0' as it means 'forever'
+            remaining_ttl = 0
+
+        else
+            -- compute elapsed time to get remaining ttl for LRU caching
+            remaining_ttl = ttl - (now() - at)
+        end
 
         -- value_type of 0 is a nil entry
         if value_type == 0 then
