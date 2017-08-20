@@ -490,6 +490,8 @@ function _M:set(key, opts, value)
         local ttl, neg_ttl   = check_opts(self, opts)
         local namespaced_key = self.namespace .. key
 
+        set_lru(self, key, value, ttl, neg_ttl)
+
         local ok, err = set_shm(self, namespaced_key, value, ttl, neg_ttl)
         if not ok then
             return nil, err

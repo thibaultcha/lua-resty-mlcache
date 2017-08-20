@@ -82,16 +82,10 @@ key must be a string
 
             assert(cache:set("my_key", nil, 123))
 
-            -- value MUST NOT be in lru
-
-            local value_lru = cache.lru:get("my_key")
-
-            ngx.say("cache lru has value after set(): ", value_lru ~= nil)
-
             -- declaring a callback that MUST NOT be called
 
             local function cb()
-                ngx.log(ngx.ERR, "callback was called")
+                ngx.log(ngx.ERR, "callback was called but should not have")
             end
 
             -- try to get()
@@ -104,21 +98,51 @@ key must be a string
 
             local value_lru = cache.lru:get("my_key")
 
-            ngx.say("cache lru has value after get(): ", value_lru ~= nil)
+            ngx.say("cache lru value after get(): ", value_lru)
         }
     }
 --- request
 GET /t
 --- response_body
-cache lru has value after set(): false
 value from get(): 123
-cache lru has value after get(): true
+cache lru value after get(): 123
 --- no_error_log
 [error]
 
 
 
-=== TEST 4: set() respects 'ttl' for non-nil values
+=== TEST 4: set() puts a value directly in its own LRU
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("cache", {
+                ipc_shm = "ipc",
+            }))
+
+            -- setting a value in shm
+
+            assert(cache:set("my_key", nil, 123))
+
+            -- value MUST BE be in lru
+
+            local value_lru = cache.lru:get("my_key")
+
+            ngx.say("cache lru value after set(): ", value_lru)
+        }
+    }
+--- request
+GET /t
+--- response_body
+cache lru value after set(): 123
+--- no_error_log
+[error]
+
+
+
+=== TEST 5: set() respects 'ttl' for non-nil values
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -177,7 +201,7 @@ value from get(): 123
 
 
 
-=== TEST 5: set() respects 'neg_ttl' for nil values
+=== TEST 6: set() respects 'neg_ttl' for nil values
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -242,7 +266,7 @@ value from get(): nil
 
 
 
-=== TEST 6: set() invalidates other workers' LRU cache
+=== TEST 7: set() invalidates other workers' LRU cache
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
