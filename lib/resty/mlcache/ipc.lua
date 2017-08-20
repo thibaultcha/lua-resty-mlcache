@@ -71,11 +71,11 @@ end
 
 function _M:subscribe(channel, cb)
     if type(channel) ~= "string" then
-        return error("channel must be a string")
+        error("channel must be a string", 2)
     end
 
     if type(cb) ~= "function" then
-        return error("callback must be a function")
+        error("callback must be a function", 2)
     end
 
     if not self.callbacks[channel] then
@@ -89,11 +89,11 @@ end
 
 function _M:broadcast(channel, data)
     if type(channel) ~= "string" then
-        return error("channel must be a string")
+        error("channel must be a string", 2)
     end
 
     if type(data) ~= "string" then
-        return error("data must be a string")
+        error("data must be a string", 2)
     end
 
     local marshalled_event = marshall(worker_pid(), channel, data)
