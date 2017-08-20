@@ -30,14 +30,14 @@ __DATA__
 
             local cache = assert(mlcache.new("cache"))
 
-            local ok, err = cache:delete("foo")
+            local ok, err = pcall(cache.delete, cache, "foo")
             ngx.say(err)
         }
     }
 --- request
 GET /t
 --- response_body
-no ipc to propagate deletion
+no ipc to propagate deletion, specify ipc_shm
 --- no_error_log
 [error]
 

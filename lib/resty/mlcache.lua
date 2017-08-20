@@ -485,7 +485,7 @@ end
 
 function _M:set(key, opts, value)
     if not self.ipc then
-        return nil, "no ipc to propagate update"
+        error("no ipc to propagate update, specify ipc_shm", 2)
     end
 
     if type(key) ~= "string" then
@@ -518,7 +518,7 @@ end
 
 function _M:delete(key)
     if not self.ipc then
-        return nil, "no ipc to propagate deletion"
+        error("no ipc to propagate deletion, specify ipc_shm", 2)
     end
 
     if type(key) ~= "string" then
@@ -550,7 +550,7 @@ end
 
 function _M:update(timeout)
     if not self.ipc then
-        return nil, "no ipc to update from"
+        error("no ipc to poll updates, specify ipc_shm", 2)
     end
 
     local ok, err = self.ipc:poll(timeout)

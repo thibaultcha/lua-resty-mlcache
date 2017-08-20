@@ -28,14 +28,14 @@ __DATA__
 
             local cache = assert(mlcache.new("cache"))
 
-            local ok, err = cache:set("foo")
+            local ok, err = pcall(cache.set, cache, "foo")
             ngx.say(err)
         }
     }
 --- request
 GET /t
 --- response_body
-no ipc to propagate update
+no ipc to propagate update, specify ipc_shm
 --- no_error_log
 [error]
 
