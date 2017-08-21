@@ -382,6 +382,10 @@ function _M:get(key, opts, cb, ...)
     -- not in shm either
     -- single worker must execute the callback
 
+    -- opts validation
+
+    local ttl, neg_ttl = check_opts(self, opts)
+
     local lock, err = resty_lock:new(self.shm, self.resty_lock_opts)
     if not lock then
         return nil, "could not create lock: " .. err
@@ -406,10 +410,6 @@ function _M:get(key, opts, cb, ...)
 
         return unlock_and_ret(lock, data, nil, 2)
     end
-
-    -- opts validation
-
-    local ttl, neg_ttl = check_opts(self, opts)
 
     -- still not in shm, we are responsible for running the callback
 
