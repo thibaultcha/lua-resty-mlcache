@@ -422,7 +422,7 @@ function _M:get(key, opts, cb, ...)
 
     -- override ttl / neg_ttl
 
-    if new_ttl and type(new_ttl) == "number" and new_ttl >= 0 then
+    if type(new_ttl) == "number" and new_ttl >= 0 then
         if data == nil then
             neg_ttl = new_ttl
 
