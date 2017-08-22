@@ -1326,7 +1326,7 @@ qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
             assert(err == nil, err)
             assert(data == 1)
 
-            ngx.sleep(0.1)
+            ngx.sleep(0.15)
 
             data, err = cache:get("key", opts, cb2)
             assert(err == nil, err)
@@ -1371,7 +1371,7 @@ in callback 2
             assert(err == nil, err)
             assert(data == nil)
 
-            ngx.sleep(0.1)
+            ngx.sleep(0.15)
 
             data, err = cache:get("key", opts, cb2)
             assert(err == nil, err)
@@ -1416,7 +1416,7 @@ in callback 2
             assert(err == nil, err)
             assert(data == 1)
 
-            ngx.sleep(0.1)
+            ngx.sleep(0.15)
 
             data, err = cache:get("pos_key", opts, neg_cb)
             assert(err == nil, err)
@@ -1430,7 +1430,7 @@ in callback 2
             assert(err == nil, err)
             assert(data == nil)
 
-            ngx.sleep(0.1)
+            ngx.sleep(0.15)
 
             data, err = cache:get("neg_key", opts, pos_cb)
             assert(err == nil, err)
