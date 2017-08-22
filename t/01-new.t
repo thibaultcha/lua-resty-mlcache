@@ -18,7 +18,26 @@ run_tests();
 
 __DATA__
 
-=== TEST 1: new() validates shm name
+=== TEST 1: module has version number
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            ngx.say(mlcache._VERSION)
+        }
+    }
+--- request
+GET /t
+--- response_body_like
+\d+\.\d+\.\d+
+--- no_error_log
+[error]
+
+
+
+=== TEST 2: new() validates shm name
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -40,7 +59,7 @@ shm must be a string
 
 
 
-=== TEST 2: new() validates ipc_shm name
+=== TEST 3: new() validates ipc_shm name
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -62,7 +81,7 @@ ipc_shm must be a string
 
 
 
-=== TEST 3: new() validates opts
+=== TEST 4: new() validates opts
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -84,7 +103,7 @@ opts must be a table
 
 
 
-=== TEST 4: new() ensures shm exists
+=== TEST 5: new() ensures shm exists
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -106,7 +125,7 @@ no such lua_shared_dict: foo
 
 
 
-=== TEST 5: new() ensures ipc shm exists
+=== TEST 6: new() ensures ipc shm exists
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -128,7 +147,7 @@ no such lua_shared_dict: ipc
 
 
 
-=== TEST 6: new() validates lru_size
+=== TEST 7: new() validates lru_size
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -152,7 +171,7 @@ opts.lru_size must be a number
 
 
 
-=== TEST 7: new() validates ttl
+=== TEST 8: new() validates ttl
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -184,7 +203,7 @@ opts.ttl must be >= 0
 
 
 
-=== TEST 8: new() validates neg_ttl
+=== TEST 9: new() validates neg_ttl
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -216,7 +235,7 @@ opts.neg_ttl must be >= 0
 
 
 
-=== TEST 9: new() creates an mlcache object with defaults
+=== TEST 10: new() creates an mlcache object with defaults
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -244,7 +263,7 @@ number
 
 
 
-=== TEST 10: new() accepts user-provided LRU instances
+=== TEST 11: new() accepts user-provided LRU instances
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
