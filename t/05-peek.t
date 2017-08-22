@@ -39,7 +39,7 @@ run_tests();
 
 __DATA__
 
-=== TEST 1: probe() validates key
+=== TEST 1: peek() validates key
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -52,7 +52,7 @@ __DATA__
                 return
             end
 
-            local ok, err = pcall(cache.probe, cache)
+            local ok, err = pcall(cache.peek, cache)
             if not ok then
                 ngx.say(err)
             end
@@ -67,7 +67,7 @@ key must be a string
 
 
 
-=== TEST 2: probe() returns nil if a key has never been fetched before
+=== TEST 2: peek() returns nil if a key has never been fetched before
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -80,7 +80,7 @@ key must be a string
                 return
             end
 
-            local ttl, err = cache:probe("my_key")
+            local ttl, err = cache:peek("my_key")
             if err then
                 ngx.log(ngx.ERR, err)
                 return
@@ -98,7 +98,7 @@ ttl: nil
 
 
 
-=== TEST 3: probe() returns the remaining ttl if a key has been fetched before
+=== TEST 3: peek() returns the remaining ttl if a key has been fetched before
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -121,7 +121,7 @@ ttl: nil
                 return
             end
 
-            local ttl, err = cache:probe("my_key")
+            local ttl, err = cache:peek("my_key")
             if err then
                 ngx.log(ngx.ERR, err)
                 return
@@ -131,7 +131,7 @@ ttl: nil
 
             ngx.sleep(1)
 
-            local ttl, err = cache:probe("my_key")
+            local ttl, err = cache:peek("my_key")
             if err then
                 ngx.log(ngx.ERR, err)
                 return
@@ -150,7 +150,7 @@ ttl: 18
 
 
 
-=== TEST 4: probe() returns the value if a key has been fetched before
+=== TEST 4: peek() returns the value if a key has been fetched before
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -183,7 +183,7 @@ ttl: 18
                 return
             end
 
-            local ttl, err, val = cache:probe("my_key")
+            local ttl, err, val = cache:peek("my_key")
             if err then
                 ngx.log(ngx.ERR, err)
                 return
@@ -191,7 +191,7 @@ ttl: 18
 
             ngx.say("ttl: ", math.ceil(ttl), " val: ", val)
 
-            local ttl, err, val = cache:probe("my_nil_key")
+            local ttl, err, val = cache:peek("my_nil_key")
             if err then
                 ngx.log(ngx.ERR, err)
                 return
@@ -210,7 +210,7 @@ ttl: \d* nil_val: nil
 
 
 
-=== TEST 5: probe() JITs on hit
+=== TEST 5: peek() JITs on hit
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -227,7 +227,7 @@ ttl: \d* nil_val: nil
             ngx.say("val: ", val)
 
             for i = 1, 10e3 do
-                assert(cache:probe("key"))
+                assert(cache:peek("key"))
             end
         }
     }
@@ -242,7 +242,7 @@ qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):13 loop\]/
 
 
 
-=== TEST 6: probe() JITs on miss
+=== TEST 6: peek() JITs on miss
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -252,7 +252,7 @@ qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):13 loop\]/
             local cache = assert(mlcache.new("cache"))
 
             for i = 1, 10e3 do
-                local ttl, err, val = cache:probe("key")
+                local ttl, err, val = cache:peek("key")
                 assert(err == nil)
                 assert(ttl == nil)
                 assert(val == nil)

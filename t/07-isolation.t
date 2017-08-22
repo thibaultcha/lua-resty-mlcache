@@ -203,7 +203,7 @@ received event from cache_1 invalidations: my_key
 
 
 
-=== TEST 5: multiple instances probe() of the same key is isolated
+=== TEST 5: multiple instances peek() of the same key is isolated
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -220,16 +220,16 @@ received event from cache_1 invalidations: my_key
             local data_1 = assert(cache_1:get("my_key", { ttl = 1 }, function() return "value A" end))
             local data_2 = assert(cache_2:get("my_key", { ttl = 2 }, function() return "value B" end))
 
-            -- probe cache 1
+            -- peek cache 1
 
-            local ttl, err, val = assert(cache_1:probe("my_key"))
+            local ttl, err, val = assert(cache_1:peek("my_key"))
 
             ngx.say("cache_1 ttl: ", ttl)
             ngx.say("cache_1 value: ", val)
 
-            -- probe cache 2
+            -- peek cache 2
 
-            local ttl, err, val = assert(cache_2:probe("my_key"))
+            local ttl, err, val = assert(cache_2:peek("my_key"))
 
             ngx.say("cache_2 ttl: ", ttl)
             ngx.say("cache_2 value: ", val)

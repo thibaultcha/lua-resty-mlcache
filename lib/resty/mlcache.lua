@@ -447,7 +447,7 @@ function _M:get(key, opts, cb, ...)
 end
 
 
-function _M:probe(key)
+function _M:peek(key)
     if type(key) ~= "string" then
         error("key must be a string", 2)
     end
