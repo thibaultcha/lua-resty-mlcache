@@ -1397,7 +1397,7 @@ qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 
             local function cb()
                 ngx.say("in callback 1")
-                return 1, 0.1
+                return 1, nil, 0.1
             end
 
             local function cb2()
@@ -1448,7 +1448,7 @@ in callback 2
 
             local function cb()
                 ngx.say("in callback 1")
-                return nil, 0.1
+                return nil, nil, 0.1
             end
 
             local function cb2()
@@ -1499,12 +1499,12 @@ in callback 2
 
             local function pos_cb()
                 ngx.say("in positive callback")
-                return 1, "success"
+                return 1, nil, "success"
             end
 
             local function neg_cb()
                 ngx.say("in negative callback")
-                return nil, -1
+                return nil, nil, -1
             end
 
             ngx.say("Test A: string TTL return value is ignored")
