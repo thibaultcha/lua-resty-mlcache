@@ -65,6 +65,7 @@ The cache level hierarchy is:
 # Table of Contents
 
 - [Synopsis](#synopsis)
+- [Requirements](#requirements)
 - [Installation](#installation)
 - [Methods](#methods)
     - [new](#new)
@@ -131,6 +132,19 @@ http {
     }
 }
 ```
+
+[Back to TOC](#table-of-contents)
+
+# Requirements
+
+* OpenResty >= `1.11.2.2`
+    * ngx_lua
+    * lua-resty-lrucache
+    * lua-resty-lock
+
+This library **should** be entirely compatible with older versions of
+OpenResty, but it has only been tested against OpenResty `1.11.2.2` and
+greater.
 
 [Back to TOC](#table-of-contents)
 
