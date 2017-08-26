@@ -86,12 +86,12 @@ http {
     # use LuaRocks or opm.
     lua_package_path "/path/to/lua-resty-mlcache/lib/?.lua;;";
 
-    lua_shared_dict cache 1m;
+    lua_shared_dict cache_dict 1m;
 
     init_by_lua_block {
         local mlcache = require "resty.mlcache"
 
-        local cache, err = mlcache.new("cache", {
+        local cache, err = mlcache.new("my_cache", "cache_dict", {
             lru_size = 500,    -- size of the L1 (Lua-land LRU) cache
             ttl      = 3600,   -- 1h ttl for hits
             neg_ttl  = 30,     -- 30s ttl for misses
@@ -177,16 +177,21 @@ Once you have a local copy of this module's `lib/` directory, add it to your
 
 new
 ---
-**syntax:** `cache, err = mlcache.new(shm, opts?)`
+**syntax:** `cache, err = mlcache.new(name, shm, opts?)`
 
 Creates a new mlcache instance. If failed, returns `nil` and a string
 describing the error.
 
-The first argument `shm` is the name of the `lua_shared_dict` shared memory
+The first argument `name` is an arbitrary name of your choosing for this cache,
+and must be a string. Each mlcache instance namespaces the values it holds
+according to its name, so several instances with the same name would
+share the same data.
+
+The second argument `shm` is the name of the `lua_shared_dict` shared memory
 zone. Several instances of mlcache can use the same shm (values will be
 namespaced).
 
-The second argument `opts` is optional. If provided, it must be a table
+The third argument `opts` is optional. If provided, it must be a table
 holding the desired options for this instance. The possible options are:
 
 - `lru_size`: a number defining the size of the underlying L1 cache
@@ -219,7 +224,7 @@ Example:
 ```lua
 local mlcache = require "resty.mlcache"
 
-local cache, err = mlcache.new("mlcache_shm", {
+local cache, err = mlcache.new("my_cache", "cache_shared_dict", {
     lru_size = 1000, -- hold up to 1000 items in the L1 cache (Lua VM)
     ttl      = 3600, -- caches scalar types and tables for 1h
     neg_ttl  = 60    -- caches nil values for 60s,
@@ -235,13 +240,15 @@ You can create several mlcache instances relying on the same underlying
 ```lua
 local mlcache = require "mlcache"
 
-local cache_1 = mlcache.new("mlcache_shm", { lru_size = 100 })
-local cache_2 = mlcache.new("mlcache_shm", { lru_size = 1e5 })
+local cache_1 = mlcache.new("cache_1", "cache_shared_dict", { lru_size = 100 })
+local cache_2 = mlcache.new("cache_2", "cache_shared_dict", { lru_size = 1e5 })
 ```
 
 In the above example, `cache_1` is ideal for holding a few, very large values.
 `cache_2` can be used to hold a large number of small values. Both instances
-will rely on the same shm: `lua_shared_dict mlcache_shm 2048m;`.
+will rely on the same shm: `lua_shared_dict mlcache_shm 2048m;`. Even if
+you use identical keys in both caches, they will not conflict with each other
+since they each bear a different name.
 
 [Back to TOC](#table-of-contents)
 
@@ -330,7 +337,7 @@ Example:
 ```lua
 local mlcache = require "mlcache"
 
-local cache, err = mlcache.new("mlcache_shm", {
+local cache, err = mlcache.new("my_cache", "cache_shared_dict", {
     lru_size = 1000
 })
 if not cache then
@@ -399,7 +406,7 @@ Example:
 ```lua
 local mlcache = require "mlcache"
 
-local cache = mlcache.new("mlcache_shm")
+local cache = mlcache.new("my_cache", "cache_shared_dict")
 
 local ttl, err, value = cache:peek("key")
 if err then

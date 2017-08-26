@@ -1,5 +1,6 @@
 -- vim: st=4 sts=4 sw=4 et:
 
+local ffi        = require "ffi"
 local cjson      = require "cjson.safe"
 local lrucache   = require "resty.lrucache"
 local resty_lock = require "resty.lock"
@@ -20,6 +21,28 @@ local setmetatable = setmetatable
 
 local LOCK_KEY_PREFIX         = "lua-resty-mlcache:lock:"
 local CACHE_MISS_SENTINEL_LRU = {}
+local LRU_INSTANCES           = {}
+
+
+local c_str_type    = ffi.typeof("char *")
+local c_lru_gc_type = ffi.metatype([[
+    struct {
+        char *lru_name;
+        int   len;
+    }
+]], {
+    __gc = function(c_gc_type)
+        local lru_name = ffi.string(c_gc_type.lru_name, c_gc_type.len)
+
+        local lru_gc = LRU_INSTANCES[lru_name]
+        if lru_gc then
+            lru_gc.count = lru_gc.count - 1
+            if lru_gc.count <= 0 then
+                LRU_INSTANCES[lru_name] = nil
+            end
+        end
+    end
+})
 
 
 local TYPES_LOOKUP = {
@@ -109,7 +132,11 @@ local _M     = {
 local mt = { __index = _M }
 
 
-function _M.new(shm, opts)
+function _M.new(name, shm, opts)
+    if type(name) ~= "string" then
+        error("name must be a string", 2)
+    end
+
     if type(shm) ~= "string" then
         error("shm must be a string", 2)
     end
@@ -163,7 +190,7 @@ function _M.new(shm, opts)
     end
 
     local self          = {
-        lru             = opts.lru     or lrucache.new(opts.lru_size or 100),
+        name            = name,
         dict            = dict,
         shm             = shm,
         ttl             = opts.ttl     or 30,
@@ -171,25 +198,54 @@ function _M.new(shm, opts)
         resty_lock_opts = opts.resty_lock_opts,
     }
 
-    self.namespace = fmt("%p", self)
-
     if opts.ipc_shm then
         local mlcache_ipc = require "resty.mlcache.ipc"
 
-        local ipc, err = mlcache_ipc.new(opts.ipc_shm, opts.debug)
-        if not ipc then
+        local err
+        self.ipc, err = mlcache_ipc.new(opts.ipc_shm, opts.debug)
+        if not self.ipc then
             return nil, "could not instanciate mlcache.ipc: " .. err
         end
 
-        local channel = fmt("lua-resty-mlcache:invalidations:%s",
-                            self.namespace)
-
-        self.ipc = ipc
-        self.ipc_invalidation_channel = channel
+        self.ipc_invalidation_channel = fmt("mlcache:invalidations:%s", name)
 
         self.ipc:subscribe(self.ipc_invalidation_channel, function(key)
             self.lru:delete(key)
         end)
+    end
+
+    if opts.lru then
+        self.lru = opts.lru
+
+    else
+        -- Several mlcache instances can have the same name and hence, the samw
+        -- lru instance. We need to GC such LRU instances when all mlcache
+        -- instances using them are GC'ed.
+        -- We do this by using a C struct with a __gc metamethod.
+
+        local c_lru_gc    = ffi.new(c_lru_gc_type)
+        c_lru_gc.lru_name = ffi.cast(c_str_type, name)
+        c_lru_gc.len      = #name
+
+        -- Keep track of our LRU instance and a counter of how many mlcache
+        -- instances are refering to it
+
+        local lru_gc = LRU_INSTANCES[name]
+        if not lru_gc then
+            lru_gc              = { count = 0, lru = nil }
+            LRU_INSTANCES[name] = lru_gc
+        end
+
+        local lru = lru_gc.lru
+        if not lru then
+            lru   = lrucache.new(opts.lru_size or 100)
+            lru_gc.lru = lru
+        end
+
+        self.lru      = lru
+        self.c_lru_gc = c_lru_gc
+
+        lru_gc.count = lru_gc.count + 1
     end
 
     return setmetatable(self, mt)
@@ -377,7 +433,7 @@ function _M:get(key, opts, cb, ...)
     -- restrict this key to the current namespace, so we isolate this
     -- mlcache instance from potential other instances using the same
     -- shm
-    local namespaced_key = self.namespace .. key
+    local namespaced_key = self.name .. key
 
     local err
     data, err = get_shm_set_lru(self, key, namespaced_key)
@@ -473,7 +529,7 @@ function _M:peek(key)
     -- restrict this key to the current namespace, so we isolate this
     -- mlcache instance from potential other instances using the same
     -- shm
-    local namespaced_key = self.namespace .. key
+    local namespaced_key = self.name .. key
 
     local v, err = self.dict:get(namespaced_key)
     if err then
@@ -515,7 +571,7 @@ function _M:set(key, opts, value)
         -- mlcache instance from potential other instances using the same
         -- shm
         local ttl, neg_ttl   = check_opts(self, opts)
-        local namespaced_key = self.namespace .. key
+        local namespaced_key = self.name .. key
 
         set_lru(self, key, value, ttl, neg_ttl)
 
@@ -548,7 +604,7 @@ function _M:delete(key)
         -- restrict this key to the current namespace, so we isolate this
         -- mlcache instance from potential other instances using the same
         -- shm
-        local namespaced_key = self.namespace .. key
+        local namespaced_key = self.name .. key
 
         local ok, err = self.dict:delete(namespaced_key)
         if not ok then

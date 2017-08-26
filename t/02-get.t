@@ -13,7 +13,7 @@ my $pwd = cwd();
 
 our $HttpConfig = qq{
     lua_package_path "$pwd/lib/?.lua;;";
-    lua_shared_dict  cache 1m;
+    lua_shared_dict  cache_shm 1m;
 
     init_by_lua_block {
         -- local verbose = true
@@ -46,7 +46,7 @@ __DATA__
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache")
+            local cache, err = mlcache.new("my_mlcache", "cache_shm")
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -74,7 +74,7 @@ key must be a string
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache")
+            local cache, err = mlcache.new("my_mlcache", "cache_shm")
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -103,7 +103,7 @@ callback must be a function
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache")
+            local cache, err = mlcache.new("my_mlcache", "cache_shm")
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -131,7 +131,7 @@ opts must be a table
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache")
+            local cache, err = mlcache.new("my_mlcache", "cache_shm")
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -163,7 +163,7 @@ callback threw an error: .*? oops
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache")
+            local cache, err = mlcache.new("my_mlcache", "cache_shm")
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -224,7 +224,7 @@ from shm: number 123
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache")
+            local cache, err = mlcache.new("my_mlcache", "cache_shm")
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -285,7 +285,7 @@ from shm: boolean true
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache")
+            local cache, err = mlcache.new("my_mlcache", "cache_shm")
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -346,7 +346,7 @@ from shm: boolean false
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache")
+            local cache, err = mlcache.new("my_mlcache", "cache_shm")
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -407,7 +407,7 @@ from shm: nil nil
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache")
+            local cache, err = mlcache.new("my_mlcache", "cache_shm")
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -469,7 +469,7 @@ from shm: string hello world
             local cjson = require "cjson"
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache")
+            local cache, err = mlcache.new("my_mlcache", "cache_shm")
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -534,7 +534,7 @@ from shm: table world bar
             local cjson = require "cjson"
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache")
+            local cache, err = mlcache.new("my_mlcache", "cache_shm")
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -566,7 +566,7 @@ qr/\[error\] .*?mlcache\.lua:\d+: cannot cache value of type userdata/
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache")
+            local cache, err = mlcache.new("my_mlcache", "cache_shm")
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -601,7 +601,7 @@ GET /t
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache", { ttl = 0.3 }))
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", { ttl = 0.3 }))
 
             local function cb()
                 ngx.say("in callback")
@@ -639,7 +639,7 @@ in callback
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache", {
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
                 ttl     = 10,
                 neg_ttl = 0.3
             }))
@@ -683,7 +683,7 @@ in callback
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache", { ttl = 10 }))
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", { ttl = 10 }))
 
             local function cb()
                 ngx.say("in callback")
@@ -721,7 +721,7 @@ in callback
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache", { neg_ttl = 2 }))
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", { neg_ttl = 2 }))
 
             local function cb()
                 ngx.say("in callback")
@@ -762,7 +762,7 @@ in callback
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache", { ttl = 0.3 }))
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", { ttl = 0.3 }))
 
             local function cb()
                 ngx.say("in callback")
@@ -809,7 +809,7 @@ in shm after exp: 123
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = assert(mlcache.new("cache", { ttl = 0.3 }))
+            local cache, err = assert(mlcache.new("my_mlcache", "cache_shm", { ttl = 0.3 }))
 
             local function cb()
                 ngx.say("in callback")
@@ -858,7 +858,7 @@ in shm after exp: nil
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache")
+            local cache, err = mlcache.new("my_mlcache", "cache_shm")
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -891,7 +891,7 @@ opts.ttl must be >= 0
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache")
+            local cache, err = mlcache.new("my_mlcache", "cache_shm")
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -924,7 +924,7 @@ opts.neg_ttl must be >= 0
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache"))
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
 
             local function cb()
                 return 123
@@ -982,7 +982,7 @@ is stale in LRU: 123
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache"))
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
 
             local function cb()
                 return 123
@@ -1026,7 +1026,7 @@ is not expired in LRU: 123
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache"))
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
 
             local function cb()
                 return nil
@@ -1086,7 +1086,7 @@ is stale in LRU: table: \S+
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache"))
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
 
             local function cb()
                 return nil
@@ -1129,7 +1129,7 @@ is stale in LRU: nil
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache"))
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
 
             local function cb()
                 return 123
@@ -1167,7 +1167,7 @@ hit level from shm: 2
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache"))
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
 
             local function cb()
                 return nil
@@ -1205,7 +1205,7 @@ hit level from shm: 2
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache"))
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
 
             local function cb()
                 return 123456
@@ -1235,7 +1235,7 @@ qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache"))
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
 
             local function cb_number()
                 return 123456
@@ -1295,7 +1295,7 @@ GET /t
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache"))
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
 
             local function cb_table()
                 return { hello = "world" }
@@ -1328,7 +1328,7 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):18 loop\]/
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache"))
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
 
             local function cb()
                 return nil
@@ -1359,7 +1359,7 @@ qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache"))
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
 
             local function cb()
                 return nil
@@ -1385,7 +1385,7 @@ qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 
 
 
-=== TEST 30: get() allows callback second return value overriding ttl
+=== TEST 32: get() allows callback second return value overriding ttl
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1393,7 +1393,7 @@ qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
             local mlcache = require "resty.mlcache"
 
             local opts  = { ttl = 10 }
-            local cache = assert(mlcache.new("cache", opts))
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", opts))
 
             local function cb()
                 ngx.say("in callback 1")
@@ -1436,7 +1436,7 @@ in callback 2
 
 
 
-=== TEST 31: get() allows callback second return value overriding neg_ttl
+=== TEST 33: get() allows callback second return value overriding neg_ttl
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1444,7 +1444,7 @@ in callback 2
             local mlcache = require "resty.mlcache"
 
             local opts  = { ttl = 10, neg_ttl = 10 }
-            local cache = assert(mlcache.new("cache", opts))
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", opts))
 
             local function cb()
                 ngx.say("in callback 1")
@@ -1487,7 +1487,7 @@ in callback 2
 
 
 
-=== TEST 32: get() ignores invalid callback second return value
+=== TEST 34: get() ignores invalid callback second return value
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1495,7 +1495,7 @@ in callback 2
             local mlcache = require "resty.mlcache"
 
             local opts  = { ttl = 0.1, neg_ttl = 0.1 }
-            local cache = assert(mlcache.new("cache", opts))
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", opts))
 
             local function pos_cb()
                 ngx.say("in positive callback")

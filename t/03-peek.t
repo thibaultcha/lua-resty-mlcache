@@ -13,7 +13,7 @@ my $pwd = cwd();
 
 our $HttpConfig = qq{
     lua_package_path "$pwd/lib/?.lua;;";
-    lua_shared_dict  cache 1m;
+    lua_shared_dict  cache_shm 1m;
 
     init_by_lua_block {
         -- local verbose = true
@@ -46,7 +46,7 @@ __DATA__
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache")
+            local cache, err = mlcache.new("my_mlcache", "cache_shm")
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -74,7 +74,7 @@ key must be a string
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache")
+            local cache, err = mlcache.new("my_mlcache", "cache_shm")
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -105,7 +105,7 @@ ttl: nil
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache")
+            local cache, err = mlcache.new("my_mlcache", "cache_shm")
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -157,7 +157,7 @@ ttl: 18
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache")
+            local cache, err = mlcache.new("my_mlcache", "cache_shm")
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -217,7 +217,7 @@ ttl: \d* nil_val: nil
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache"))
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
 
             local function cb()
                 return 123456
@@ -249,7 +249,7 @@ qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):13 loop\]/
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache"))
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
 
             for i = 1, 10e3 do
                 local ttl, err, val = cache:peek("key")
