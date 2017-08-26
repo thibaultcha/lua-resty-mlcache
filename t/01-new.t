@@ -11,7 +11,7 @@ my $pwd = cwd();
 
 our $HttpConfig = qq{
     lua_package_path "$pwd/lib/?.lua;;";
-    lua_shared_dict  cache 1m;
+    lua_shared_dict  cache_shm 1m;
 };
 
 run_tests();
@@ -37,7 +37,7 @@ GET /t
 
 
 
-=== TEST 2: new() validates shm name
+=== TEST 2: new() validates name
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -55,18 +55,40 @@ GET /t
 --- response_body
 
 --- error_log
-shm must be a string
+name must be a string
 
 
 
-=== TEST 3: new() validates ipc_shm name
+=== TEST 3: new() validates shm
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local ok, err = pcall(mlcache.new, "cache", { ipc_shm = 1 })
+            local ok, err = pcall(mlcache.new, "name")
+            if not ok then
+                ngx.log(ngx.ERR, err)
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body
+
+--- error_log
+shm must be a string
+
+
+
+=== TEST 4: new() validates ipc_shm name
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local ok, err = pcall(mlcache.new, "name", "cache_shm", { ipc_shm = 1 })
             if not ok then
                 ngx.log(ngx.ERR, err)
             end
@@ -81,14 +103,14 @@ ipc_shm must be a string
 
 
 
-=== TEST 4: new() validates opts
+=== TEST 5: new() validates opts
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local ok, err = pcall(mlcache.new, "", "foo")
+            local ok, err = pcall(mlcache.new, "name", "cache_shm", "foo")
             if not ok then
                 ngx.log(ngx.ERR, err)
             end
@@ -103,14 +125,14 @@ opts must be a table
 
 
 
-=== TEST 5: new() ensures shm exists
+=== TEST 6: new() ensures shm exists
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("foo")
+            local cache, err = mlcache.new("name", "foo")
             if not cache then
                 ngx.log(ngx.ERR, err)
             end
@@ -125,14 +147,14 @@ no such lua_shared_dict: foo
 
 
 
-=== TEST 6: new() ensures ipc shm exists
+=== TEST 7: new() ensures ipc shm exists
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache", { ipc_shm = "ipc" })
+            local cache, err = mlcache.new("name", "cache_shm", { ipc_shm = "ipc" })
             if not cache then
                 ngx.log(ngx.ERR, err)
             end
@@ -147,14 +169,14 @@ no such lua_shared_dict: ipc
 
 
 
-=== TEST 7: new() validates lru_size
+=== TEST 8: new() validates lru_size
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local ok, err = pcall(mlcache.new, "cache", {
+            local ok, err = pcall(mlcache.new, "name", "cache_shm", {
                 lru_size = "",
             })
             if not ok then
@@ -171,21 +193,21 @@ opts.lru_size must be a number
 
 
 
-=== TEST 8: new() validates ttl
+=== TEST 9: new() validates ttl
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local ok, err = pcall(mlcache.new, "cache", {
+            local ok, err = pcall(mlcache.new, "name", "cache_shm", {
                 ttl = ""
             })
             if not ok then
                 ngx.log(ngx.ERR, err)
             end
 
-            local ok, err = pcall(mlcache.new, "cache", {
+            local ok, err = pcall(mlcache.new, "name", "cache_shm", {
                 ttl = -1
             })
             if not ok then
@@ -203,21 +225,21 @@ opts.ttl must be >= 0
 
 
 
-=== TEST 9: new() validates neg_ttl
+=== TEST 10: new() validates neg_ttl
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local ok, err = pcall(mlcache.new, "cache", {
+            local ok, err = pcall(mlcache.new, "name", "cache_shm", {
                 neg_ttl = ""
             })
             if not ok then
                 ngx.log(ngx.ERR, err)
             end
 
-            local ok, err = pcall(mlcache.new, "cache", {
+            local ok, err = pcall(mlcache.new, "name", "cache_shm", {
                 neg_ttl = -1
             })
             if not ok then
@@ -235,14 +257,14 @@ opts.neg_ttl must be >= 0
 
 
 
-=== TEST 10: new() creates an mlcache object with defaults
+=== TEST 11: new() creates an mlcache object with defaults
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("cache")
+            local cache, err = mlcache.new("name", "cache_shm")
             if not cache then
                 ngx.log(ngx.ERR, err)
             end
@@ -263,7 +285,7 @@ number
 
 
 
-=== TEST 11: new() accepts user-provided LRU instances
+=== TEST 12: new() accepts user-provided LRU instances
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -273,7 +295,7 @@ number
 
             local my_lru = pureffi_lrucache.new(100)
 
-            local cache = assert(mlcache.new("cache", { lru = my_lru }))
+            local cache = assert(mlcache.new("name", "cache_shm", { lru = my_lru }))
 
             ngx.say("lru is user-provided: ", cache.lru == my_lru)
         }

@@ -11,8 +11,8 @@ my $pwd = cwd();
 
 our $HttpConfig = qq{
     lua_package_path "$pwd/lib/?.lua;;";
-    lua_shared_dict  cache 1m;
-    lua_shared_dict  ipc   1m;
+    lua_shared_dict  cache_shm 1m;
+    lua_shared_dict  ipc_shm   1m;
 };
 
 run_tests();
@@ -26,7 +26,7 @@ __DATA__
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache"))
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
 
             local ok, err = pcall(cache.set, cache, "foo")
             ngx.say(err)
@@ -48,8 +48,8 @@ no ipc to propagate update, specify ipc_shm
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache", {
-                ipc_shm = "ipc",
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
+                ipc_shm = "ipc_shm",
             }))
 
             local ok, err = pcall(cache.set, cache)
@@ -74,8 +74,8 @@ key must be a string
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache", {
-                ipc_shm = "ipc",
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
+                ipc_shm = "ipc_shm",
             }))
 
             -- setting a value in shm
@@ -118,8 +118,8 @@ cache lru value after get(): 123
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache", {
-                ipc_shm = "ipc",
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
+                ipc_shm = "ipc_shm",
             }))
 
             -- setting a value in shm
@@ -149,8 +149,8 @@ cache lru value after set(): 123
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache", {
-                ipc_shm = "ipc",
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
+                ipc_shm = "ipc_shm",
             }))
 
             -- setting a non-nil value in shm
@@ -208,8 +208,8 @@ value from get(): 123
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache", {
-                ipc_shm = "ipc",
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
+                ipc_shm = "ipc_shm",
             }))
 
             -- setting a nil value in shm
@@ -273,12 +273,12 @@ value from get(): nil
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache", {
-                ipc_shm = "ipc",
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
+                ipc_shm = "ipc_shm",
                 debug   = true, -- allows same worker to receive its own published events
             }))
 
-            cache.ipc:subscribe("lua-resty-mlcache:invalidations:" .. cache.namespace, function(data)
+            cache.ipc:subscribe("mlcache:invalidations:" .. cache.name, function(data)
                 ngx.say("received event from invalidations: ", data)
             end)
 

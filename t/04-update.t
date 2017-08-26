@@ -13,8 +13,8 @@ my $pwd = cwd();
 
 our $HttpConfig = qq{
     lua_package_path "$pwd/lib/?.lua;;";
-    lua_shared_dict  cache 1m;
-    lua_shared_dict  ipc   1m;
+    lua_shared_dict  cache_shm 1m;
+    lua_shared_dict  ipc_shm   1m;
 
     init_by_lua_block {
         -- local verbose = true
@@ -47,7 +47,7 @@ __DATA__
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache"))
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
 
             local ok, err = pcall(cache.update, cache, "foo")
             ngx.say(err)
@@ -69,12 +69,12 @@ no ipc to poll updates, specify ipc_shm
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache", {
-                ipc_shm = "ipc",
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
+                ipc_shm = "ipc_shm",
                 debug = true -- allows same worker to receive its own published events
             }))
 
-            cache.ipc:subscribe("lua-resty-mlcache:invalidations:" .. cache.namespace, function(data)
+            cache.ipc:subscribe("mlcache:invalidations:" .. cache.name, function(data)
                 ngx.log(ngx.NOTICE, "received event from invalidations: ", data)
             end)
 
@@ -101,19 +101,19 @@ received event from invalidations: my_key
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache", {
-                ipc_shm = "ipc",
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
+                ipc_shm = "ipc_shm",
                 debug = true -- allows same worker to receive its own published events
             }))
 
-            cache.ipc:subscribe("lua-resty-mlcache:invalidations:" .. cache.namespace, function(data)
+            cache.ipc:subscribe("mlcache:invalidations:" .. cache.name, function(data)
                 ngx.log(ngx.NOTICE, "received event from invalidations: ", data)
             end)
 
             assert(cache:delete("my_key"))
             assert(cache:delete("my_other_key"))
 
-            ngx.shared.ipc:delete(2)
+            ngx.shared.ipc_shm:delete(2)
 
             local ok, err = cache:update(0.1)
             if not ok then
@@ -140,8 +140,8 @@ received event from invalidations: my_key
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("cache", {
-                ipc_shm = "ipc",
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
+                ipc_shm = "ipc_shm",
             }))
 
             for i = 1, 10e3 do

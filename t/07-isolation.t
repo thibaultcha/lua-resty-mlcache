@@ -11,8 +11,8 @@ my $pwd = cwd();
 
 our $HttpConfig = qq{
     lua_package_path "$pwd/lib/?.lua;;";
-    lua_shared_dict  cache 1m;
-    lua_shared_dict  ipc   1m;
+    lua_shared_dict  cache_shm 1m;
+    lua_shared_dict  ipc_shm   1m;
 
     init_by_lua_block {
         -- local verbose = true
@@ -38,15 +38,38 @@ run_tests();
 
 __DATA__
 
-=== TEST 1: multiple instances have different lua-resty-lru instances
+=== TEST 1: multiple instances with the same name have same lua-resty-lru instance
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache_1 = assert(mlcache.new("cache"))
-            local cache_2 = assert(mlcache.new("cache"))
+            local cache_1 = assert(mlcache.new("my_mlcache", "cache_shm"))
+            local cache_2 = assert(mlcache.new("my_mlcache", "cache_shm"))
+
+            ngx.say("lua-resty-lru instances are the same: ",
+                    cache_1.lru == cache_2.lru)
+        }
+    }
+--- request
+GET /t
+--- response_body
+lua-resty-lru instances are the same: true
+--- no_error_log
+[error]
+
+
+
+=== TEST 2: multiple instances with different names have different lua-resty-lru instances
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache_1 = assert(mlcache.new("my_mlcache_1", "cache_shm"))
+            local cache_2 = assert(mlcache.new("my_mlcache_2", "cache_shm"))
 
             ngx.say("lua-resty-lru instances are the same: ",
                     cache_1.lru == cache_2.lru)
@@ -61,7 +84,44 @@ lua-resty-lru instances are the same: false
 
 
 
-=== TEST 2: multiple instances get() of the same key is isolated
+=== TEST 3: garbage-collected instances also GC their lru instance
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            collectgarbage("collect")
+            local cache_1 = assert(mlcache.new("my_mlcache", "cache_shm"))
+            local cache_2 = assert(mlcache.new("my_mlcache", "cache_shm"))
+
+            cache_1.lru:set("key", 123)
+
+            cache_1 = nil
+            collectgarbage("collect")
+
+            ngx.say(cache_2.lru:get("key"))
+
+            cache_2 = nil
+            collectgarbage("collect")
+
+            cache_1 = assert(mlcache.new("my_mlcache", "cache_shm"))
+            cache_2 = assert(mlcache.new("my_mlcache", "cache_shm"))
+
+            ngx.say(cache_2.lru:get("key"))
+        }
+    }
+--- request
+GET /t
+--- response_body
+123
+nil
+--- no_error_log
+[error]
+
+
+
+=== TEST 4: multiple instances with different names get() of the same key is isolated
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -70,8 +130,8 @@ lua-resty-lru instances are the same: false
 
             -- create 2 mlcache
 
-            local cache_1 = assert(mlcache.new("cache"))
-            local cache_2 = assert(mlcache.new("cache"))
+            local cache_1 = assert(mlcache.new("my_mlcache_1", "cache_shm"))
+            local cache_2 = assert(mlcache.new("my_mlcache_2", "cache_shm"))
 
             -- set 2 values in both mlcaches
 
@@ -112,7 +172,7 @@ cache_2 shm has: value B
 
 
 
-=== TEST 3: multiple instances delete() of the same key is isolated
+=== TEST 5: multiple instances delete() of the same key is isolated
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -121,8 +181,8 @@ cache_2 shm has: value B
 
             -- create 2 mlcache
 
-            local cache_1 = assert(mlcache.new("cache", { ipc_shm = "ipc" }))
-            local cache_2 = assert(mlcache.new("cache", { ipc_shm = "ipc" }))
+            local cache_1 = assert(mlcache.new("my_mlcache_1", "cache_shm", { ipc_shm = "ipc_shm" }))
+            local cache_2 = assert(mlcache.new("my_mlcache_2", "cache_shm", { ipc_shm = "ipc_shm" }))
 
             -- set 2 values in both mlcaches
 
@@ -131,7 +191,7 @@ cache_2 shm has: value B
 
             -- test if value is set from shm (safer to check due to the key)
 
-            local shm_v = ngx.shared.cache:get(cache_1.namespace .. "my_key")
+            local shm_v = ngx.shared.cache_shm:get(cache_1.name .. "my_key")
             ngx.say("cache_1 shm has a value: ", shm_v ~= nil)
 
             -- delete value from mlcache 1
@@ -146,7 +206,7 @@ cache_2 shm has: value B
 
             -- ensure cache 1 key is deleted from shm
 
-            local shm_v = ngx.shared.cache:get(cache_1.namespace .. "my_key")
+            local shm_v = ngx.shared.cache_shm:get(cache_1.name .. "my_key")
             ngx.say("cache_1 shm has a value: ", shm_v ~= nil)
         }
     }
@@ -162,7 +222,7 @@ cache_1 shm has a value: false
 
 
 
-=== TEST 4: multiple instances broadcasts is isolated
+=== TEST 6: multiple instances broadcasts is isolated
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -171,20 +231,20 @@ cache_1 shm has a value: false
 
             -- create 2 mlcache
 
-            local cache_1 = assert(mlcache.new("cache", {
-                ipc_shm = "ipc",
+            local cache_1 = assert(mlcache.new("my_mlcache_1", "cache_shm", {
+                ipc_shm = "ipc_shm",
                 debug   = true, -- allows same worker to receive its own published events
             }))
-            local cache_2 = assert(mlcache.new("cache", {
-                ipc_shm = "ipc",
+            local cache_2 = assert(mlcache.new("my_mlcache_2", "cache_shm", {
+                ipc_shm = "ipc_shm",
                 debug   = true, -- allows same worker to receive its own published events
             }))
 
-            cache_1.ipc:subscribe("lua-resty-mlcache:invalidations:" .. cache_1.namespace, function(data)
+            cache_1.ipc:subscribe("mlcache:invalidations:" .. cache_1.name, function(data)
                 ngx.log(ngx.NOTICE, "received event from cache_1 invalidations: ", data)
             end)
 
-            cache_2.ipc:subscribe("lua-resty-mlcache:invalidations:" .. cache_2.namespace, function(data)
+            cache_2.ipc:subscribe("mlcache:invalidations:" .. cache_2.name, function(data)
                 ngx.log(ngx.NOTICE, "received event from cache_2 invalidations: ", data)
             end)
 
@@ -203,7 +263,7 @@ received event from cache_1 invalidations: my_key
 
 
 
-=== TEST 5: multiple instances peek() of the same key is isolated
+=== TEST 7: multiple instances peek() of the same key is isolated
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -212,8 +272,8 @@ received event from cache_1 invalidations: my_key
 
             -- create 2 mlcache
 
-            local cache_1 = assert(mlcache.new("cache", { ipc_shm = "ipc" }))
-            local cache_2 = assert(mlcache.new("cache", { ipc_shm = "ipc" }))
+            local cache_1 = assert(mlcache.new("my_mlcache_1", "cache_shm", { ipc_shm = "ipc_shm" }))
+            local cache_2 = assert(mlcache.new("my_mlcache_2", "cache_shm", { ipc_shm = "ipc_shm" }))
 
             -- set 2 values in both mlcaches
 
