@@ -1,8 +1,8 @@
 package = "lua-resty-mlcache"
-version = "1.0.0-1"
+version = "1.0.1-1"
 source = {
   url = "git://github.com/thibaultcha/lua-resty-mlcache",
-  tag = "1.0.0"
+  tag = "1.0.1"
 }
 description = {
   summary  = "Multi-level caching library for OpenResty",
@@ -10,7 +10,7 @@ description = {
     This library combines the power of lua_shared_dict memory zones,
     lua-resty-lrucache, and lua-resty-lock in a single, easy-to-use module.
 
-    A `get()` function acts as a "get or set" method, and can cache a value
+    A get() function acts as a "get or set" method, and can cache a value
     from any I/O operation (like a database read). Your I/O operations will be
     invoked from a single worker via lua-resty-lock, and will prevent your
     database from undergoing a dogpile effect.
@@ -23,8 +23,8 @@ description = {
 
     - Negative caching
     - TTLs and negative TTLs
-    - Custom LRU implementations (like `resty.lrucache.pureffi`)
-    - A key/value API with `set()`/`peek()`/`delete()` (provided a few minor drawbacks)
+    - Custom LRU implementations (like resty.lrucache.pureffi)
+    - A key/value API with set()/peek()/delete() (provided a few minor drawbacks)
   ]],
   homepage = "https://github.com/thibaultcha/lua-resty-mlcache",
   license  = "MIT"
