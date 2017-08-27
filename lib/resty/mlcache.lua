@@ -218,7 +218,7 @@ function _M.new(name, shm, opts)
         self.lru = opts.lru
 
     else
-        -- Several mlcache instances can have the same name and hence, the samw
+        -- Several mlcache instances can have the same name and hence, the same
         -- lru instance. We need to GC such LRU instances when all mlcache
         -- instances using them are GC'ed.
         -- We do this by using a C struct with a __gc metamethod.
@@ -227,7 +227,7 @@ function _M.new(name, shm, opts)
         c_lru_gc.lru_name = ffi.cast(c_str_type, name)
         c_lru_gc.len      = #name
 
-        -- Keep track of our LRU instance and a counter of how many mlcache
+        -- keep track of our LRU instance and a counter of how many mlcache
         -- instances are refering to it
 
         local lru_gc = LRU_INSTANCES[name]
@@ -238,7 +238,7 @@ function _M.new(name, shm, opts)
 
         local lru = lru_gc.lru
         if not lru then
-            lru   = lrucache.new(opts.lru_size or 100)
+            lru        = lrucache.new(opts.lru_size or 100)
             lru_gc.lru = lru
         end
 

@@ -184,7 +184,7 @@ describing the error.
 
 The first argument `name` is an arbitrary name of your choosing for this cache,
 and must be a string. Each mlcache instance namespaces the values it holds
-according to its name, so several instances with the same name would
+according to its name, so several instances with the same name will
 share the same data.
 
 The second argument `shm` is the name of the `lua_shared_dict` shared memory
@@ -246,7 +246,7 @@ local cache_2 = mlcache.new("cache_2", "cache_shared_dict", { lru_size = 1e5 })
 
 In the above example, `cache_1` is ideal for holding a few, very large values.
 `cache_2` can be used to hold a large number of small values. Both instances
-will rely on the same shm: `lua_shared_dict mlcache_shm 2048m;`. Even if
+will rely on the same shm: `lua_shared_dict cache_shared_dict 2048m;`. Even if
 you use identical keys in both caches, they will not conflict with each other
 since they each bear a different name.
 
