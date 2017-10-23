@@ -180,6 +180,11 @@ function _M.new(name, shm, opts)
             error("opts.ipc_shm must be a string", 2)
         end
 
+        if opts.lru_callback ~= nil
+            and type(opts.lru_callback) ~= 'function'
+        then
+            error("opts.lru_callback must be a function")
+        end
     else
         opts = {}
     end
@@ -196,6 +201,7 @@ function _M.new(name, shm, opts)
         ttl             = opts.ttl     or 30,
         neg_ttl         = opts.neg_ttl or 5,
         resty_lock_opts = opts.resty_lock_opts,
+        lru_callback    = opts.lru_callback,
     }
 
     if opts.ipc_shm then
@@ -267,6 +273,14 @@ local function set_lru(self, key, value, ttl, neg_ttl)
     if ttl == 0 then
         -- indefinite ttl for lua-resty-lrucache is 'nil'
         ttl = nil
+    end
+
+    if self.lru_callback then
+        local ok
+        ok, value = pcall(self.lru_callback, value)
+        if not ok then
+            return nil, 'lru_callback threw an error: ' .. value
+        end
     end
 
     self.lru:set(key, value, ttl)
@@ -513,7 +527,12 @@ function _M:get(key, opts, cb, ...)
 
     -- set our own worker's LRU cache
 
-    set_lru(self, key, data, ttl, neg_ttl)
+    data, err = set_lru(self, key, data, ttl, neg_ttl)
+    if data == CACHE_MISS_SENTINEL_LRU then
+        data = nil -- convert misses back to nil for return values
+    elseif err then
+        return unlock_and_ret(lock, nil, err)
+    end
 
     -- unlock and return
 
