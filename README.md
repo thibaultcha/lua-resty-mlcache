@@ -218,6 +218,15 @@ holding the desired options for this instance. The possible options are:
   be used as a pub/sub backend for invalidation events propagation across
   workers. Several mlcache instances can use the same `ipc_shm` (events will
   be namespaced).
+- `l1_serializer`: an _optional_ function. Its signature and accepted values
+  are documented under the [get()](#get) method, along with an example.
+  If specified, this function will be called by each worker every time the L1
+  LRU cache is a miss and the value needs to be fetched from a lower cache
+  level (L2/L3).
+  Its purpose is to perform arbitrary serialization of the cached item to
+  transform it into any Lua object _before_ storing it into the L1 LRU cache.
+  It can thus avoid your application from having to repeat such transformation
+  upon every cache hit, such as creating tables, cdata objects, functions, etc...
 
 Example:
 
@@ -287,6 +296,17 @@ options:
   accepts fractional number parts, like `0.3`. A `neg_ttl` of `0` means the
   cached misses will never expire.
   **Default:** inherited from the instance.
+- `l1_serializer`: an _optional_ function. Its signature and accepted values
+  are documented in the example below.
+  If specified, this function will be called by each worker every time the L1
+  LRU cache is a miss and the value needs to be fetched from a lower cache
+  level (L2/L3).
+  Its purpose is to perform arbitrary serialization of the cached item to
+  transform it into any Lua object _before_ storing it into the L1 LRU cache.
+  It can thus avoid your application from having to repeat such transformation
+  upon every cache hit, such as creating tables, cdata objects, functions,
+  etc...
+  **Default:** inherited from the instance.
 
 The third argument `callback` **must** be a function. Its signature and return
 values are documented in the following example:
@@ -320,14 +340,17 @@ When called, `get()` follows the below steps:
 2. query the L2 cache (`lua_shared_dict` shared memory zone). This cache is
    shared by all workers, and is less efficient than the L1 cache. It also
    involves serialization for Lua tables.
-    1. if the L2 cache has the value, it sets the value in the L1 cache,
-       and returns it.
+    1. if the L2 cache has the value, retrieve it.
+        1. if `l1_serializer` is set, run it, and set the resulting value in
+           the L1 cache.
+        2. if not, directly set the value as-is in the L1 cache.
     2. if the L2 cache does not have the value (L2 miss), it continues.
-3. creates a [lua-resty-lock], and ensures that a single worker will run
-   the callback (other workers trying to access the same value will wait).
+3. creates a [lua-resty-lock], and ensures that a single worker will run the
+   callback (other workers trying to access the same value will wait).
 4. a single worker runs the L3 callback.
 5. the callback returns (ex: it performed a database query), and the worker
-   sets the value in the L2 and L1 caches, and returns it.
+   sets the value in the L2 cache. It then sets it in its L1 cache as well
+   (as-is by default, or as returned by `l1_serializer` if specified).
 6. other workers that were trying to access the same value but were waiting
    fetch the value from the L2 cache (they do not run the L3 callback) and
    return it.
@@ -370,6 +393,51 @@ if user then
 else
     ngx.say("user does not exists")
 end
+```
+
+This second example is the modification of the above one, in which we apply
+some transformation to the retrieved `user` record, and cache it via the
+`l1_serializer` callback:
+
+```lua
+-- Our l1_serializer, called upon an L1 miss, when L2 or L3 return a hit.
+--
+-- Its signature accepts a single argument: the item as returned from
+-- an L2 hit. Therefore, this argument can never be `nil`. The result will be
+-- kept in the L1 LRU cache, but it cannot be `nil`.
+--
+-- This function can return `nil` and a string describing an error, which
+-- will be bubbled up to the `get()` call. It also runs in protected mode
+-- and will report any Lua error thrown.
+local function compile_custom_code(user_row)
+    if user_row.custom_code ~= nil then
+        local compiled, err = loadstring(user_row.custom_code)
+        if not compiled then
+            -- in this case, nothing will be stored in the cache (as if the L3
+            -- callback failed). This means that if the same operation is
+            -- attempted and the same data is returned, it will fail again.
+            -- Depending on the situation it might not be desireable, and
+            -- storing a default value in the L1 would be a better option.
+            return nil, "failed to compile custom code: " .. err
+        end
+
+        user_row.custom_code = compiled
+    end
+
+    return user_row
+end
+
+local user, err = cache:get("users:" .. user_id,
+                            { l1_serializer = compile_custom_code },
+                            fetch_user, db, user_id)
+if err then
+     ngx.log(ngx.ERR, "could not retrieve user: ", err)
+     return
+end
+
+-- now we have a ready-to-call function which was only
+-- compiled once
+user.custom_code()
 ```
 
 [Back to TOC](#table-of-contents)
@@ -452,7 +520,9 @@ one of [get()](#get).
 
 The third argument `value` is the value to cache, similar to the return value
 of the L3 callback. Just like the callback's return value, it must be a Lua
-scalar, a table, or `nil`.
+scalar, a table, or `nil`. If a `l1_serializer` is provided either from the
+constructor or in the `opts` argument, it will be called with `value` if
+`value` is not `nil`.
 
 On failure, this method returns `nil` and a string describing the error.
 
