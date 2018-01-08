@@ -225,3 +225,34 @@ lru_callback threw an error: .*?: cannot deserialize
 --- no_error_log
 [error]
 
+
+
+=== TEST 6: lru_callback is not supposed to return a nil value
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache, err = mlcache.new("my_mlcache", "cache_shm", {
+                lru_callback = function(s)
+                    return nil
+                end,
+            })
+            if not cache then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            local ok, err = cache:get("key", nil, function() return "foo" end)
+            assert(not ok, 'get call returned successfully')
+            ngx.say(err)
+        }
+    }
+--- request
+GET /t
+--- response_body_like
+lru_callback returned a nil value
+--- no_error_log
+[error]
+

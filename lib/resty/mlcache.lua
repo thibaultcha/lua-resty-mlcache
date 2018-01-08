@@ -280,6 +280,8 @@ local function set_lru(self, key, value, ttl, neg_ttl)
         ok, value = pcall(self.lru_callback, value)
         if not ok then
             return nil, 'lru_callback threw an error: ' .. value
+        elseif value == nil then
+            return nil, 'lru_callback returned a nil value'
         end
     end
 
