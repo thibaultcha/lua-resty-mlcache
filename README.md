@@ -218,6 +218,11 @@ holding the desired options for this instance. The possible options are:
   be used as a pub/sub backend for invalidation events propagation across
   workers. Several mlcache instances can use the same `ipc_shm` (events will
   be namespaced).
+- `lru_callback`: function used to transform the values before setting them
+  in the LRU cache (L1). It might bev useful to store arbitrary Lua objects
+  such as cdata objects, functions, ... This function is called for every L1
+  miss, in every worker.
+  **Default** no transformation
 
 Example:
 
@@ -320,14 +325,15 @@ When called, `get()` follows the below steps:
 2. query the L2 cache (`lua_shared_dict` shared memory zone). This cache is
    shared by all workers, and is less efficient than the L1 cache. It also
    involves serialization for Lua tables.
-    1. if the L2 cache has the value, it sets the value in the L1 cache,
-       and returns it.
+    1. if the L2 cache has the value, it calls the `lru_callback` function,
+       sets the resulting value in the L1 cache, and returns it.
     2. if the L2 cache does not have the value (L2 miss), it continues.
 3. creates a [lua-resty-lock], and ensures that a single worker will run
    the callback (other workers trying to access the same value will wait).
 4. a single worker runs the L3 callback.
 5. the callback returns (ex: it performed a database query), and the worker
-   sets the value in the L2 and L1 caches, and returns it.
+   sets the value in the L2 cache, calls the `lru_callback`, sets the resulting
+   value in the L1 cache, and returns it.
 6. other workers that were trying to access the same value but were waiting
    fetch the value from the L2 cache (they do not run the L3 callback) and
    return it.
