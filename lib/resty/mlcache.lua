@@ -180,10 +180,10 @@ function _M.new(name, shm, opts)
             error("opts.ipc_shm must be a string", 2)
         end
 
-        if opts.lru_callback ~= nil
-            and type(opts.lru_callback) ~= "function"
+        if opts.l1_serializer ~= nil
+            and type(opts.l1_serializer) ~= "function"
         then
-            error("opts.lru_callback must be a function")
+            error("opts.l1_serializer must be a function")
         end
     else
         opts = {}
@@ -201,7 +201,7 @@ function _M.new(name, shm, opts)
         ttl             = opts.ttl     or 30,
         neg_ttl         = opts.neg_ttl or 5,
         resty_lock_opts = opts.resty_lock_opts,
-        lru_callback    = opts.lru_callback,
+        l1_serializer   = opts.l1_serializer,
     }
 
     if opts.ipc_shm then
@@ -275,13 +275,13 @@ local function set_lru(self, key, value, ttl, neg_ttl)
         ttl = nil
     end
 
-    if self.lru_callback then
+    if self.l1_serializer then
         local ok
-        ok, value = pcall(self.lru_callback, value)
+        ok, value = pcall(self.l1_serializer, value)
         if not ok then
-            return nil, "lru_callback threw an error: " .. value
+            return nil, "l1_serializer threw an error: " .. value
         elseif value == nil then
-            return nil, "lru_callback returned a nil value"
+            return nil, "l1_serializer returned a nil value"
         end
     end
 

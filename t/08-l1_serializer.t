@@ -39,7 +39,7 @@ run_tests();
 
 __DATA__
 
-=== TEST 1: lru_callback is called on cache misses
+=== TEST 1: l1_serializer is called on cache misses
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -47,8 +47,8 @@ __DATA__
             local mlcache = require "resty.mlcache"
 
             local cache, err = mlcache.new("my_mlcache", "cache_shm", {
-                lru_callback = function(s)
-                    return string.format("deserialize(%q)", s)
+                l1_serializer = function(s)
+                    return string.format("transform(%q)", s)
                 end,
             })
             if not cache then
@@ -66,13 +66,13 @@ __DATA__
 --- request
 GET /t
 --- response_body
-deserialize("foo")
+transform("foo")
 --- no_error_log
 [error]
 
 
 
-=== TEST 2: lru_callback is not called on L1 hits
+=== TEST 2: l1_serializer is not called on L1 hits
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -81,9 +81,9 @@ deserialize("foo")
 
             local calls = 0
             local cache, err = mlcache.new("my_mlcache", "cache_shm", {
-                lru_callback = function(s)
+                l1_serializer = function(s)
                     calls = calls + 1
-                    return string.format("deserialize(%q)", s)
+                    return string.format("transform(%q)", s)
                 end,
             })
             if not cache then
@@ -104,16 +104,16 @@ deserialize("foo")
 --- request
 GET /t
 --- response_body
-deserialize("foo")
-deserialize("foo")
-deserialize("foo")
+transform("foo")
+transform("foo")
+transform("foo")
 calls: 1
 --- no_error_log
 [error]
 
 
 
-=== TEST 3: lru_callback is called on L2 hits
+=== TEST 3: l1_serializer is called on L2 hits
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -122,9 +122,9 @@ calls: 1
 
             local calls = 0
             local cache, err = mlcache.new("my_mlcache", "cache_shm", {
-                lru_callback = function(s)
+                l1_serializer = function(s)
                     calls = calls + 1
-                    return string.format("deserialize(%q)", s)
+                    return string.format("transform(%q)", s)
                 end,
             })
             if not cache then
@@ -146,16 +146,16 @@ calls: 1
 --- request
 GET /t
 --- response_body
-deserialize("foo")
-deserialize("foo")
-deserialize("foo")
+transform("foo")
+transform("foo")
+transform("foo")
 calls: 3
 --- no_error_log
 [error]
 
 
 
-=== TEST 4: lru_callback is called in protected mode (L2 miss)
+=== TEST 4: l1_serializer is called in protected mode (L2 miss)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -163,8 +163,8 @@ calls: 3
             local mlcache = require "resty.mlcache"
 
             local cache, err = mlcache.new("my_mlcache", "cache_shm", {
-                lru_callback = function(s)
-                    error("cannot deserialize")
+                l1_serializer = function(s)
+                    error("cannot transform")
                 end,
             })
             if not cache then
@@ -182,13 +182,13 @@ calls: 3
 --- request
 GET /t
 --- response_body_like
-lru_callback threw an error: .*?: cannot deserialize
+l1_serializer threw an error: .*?: cannot transform
 --- no_error_log
 [error]
 
 
 
-=== TEST 5: lru_callback is called in protected mode (L2 hit)
+=== TEST 5: l1_serializer is called in protected mode (L2 hit)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -197,10 +197,10 @@ lru_callback threw an error: .*?: cannot deserialize
 
             local called = false
             local cache, err = mlcache.new("my_mlcache", "cache_shm", {
-                lru_callback = function(s)
-                    if called then error("cannot deserialize") end
+                l1_serializer = function(s)
+                    if called then error("cannot transform") end
                     called = true
-                    return string.format("deserialize(%q)", s)
+                    return string.format("transform(%q)", s)
                 end,
             })
             if not cache then
@@ -221,13 +221,13 @@ lru_callback threw an error: .*?: cannot deserialize
 --- request
 GET /t
 --- response_body_like
-lru_callback threw an error: .*?: cannot deserialize
+l1_serializer threw an error: .*?: cannot transform
 --- no_error_log
 [error]
 
 
 
-=== TEST 6: lru_callback is not supposed to return a nil value
+=== TEST 6: l1_serializer is not supposed to return a nil value
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -235,7 +235,7 @@ lru_callback threw an error: .*?: cannot deserialize
             local mlcache = require "resty.mlcache"
 
             local cache, err = mlcache.new("my_mlcache", "cache_shm", {
-                lru_callback = function(s)
+                l1_serializer = function(s)
                     return nil
                 end,
             })
@@ -252,7 +252,7 @@ lru_callback threw an error: .*?: cannot deserialize
 --- request
 GET /t
 --- response_body_like
-lru_callback returned a nil value
+l1_serializer returned a nil value
 --- no_error_log
 [error]
 
