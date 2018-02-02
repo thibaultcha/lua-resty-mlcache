@@ -219,10 +219,10 @@ holding the desired options for this instance. The possible options are:
   workers. Several mlcache instances can use the same `ipc_shm` (events will
   be namespaced).
 - `l1_serializer`: function used to transform the values before setting them
-  in the LRU cache (L1). It might bev useful to store arbitrary Lua objects
+  in the LRU cache (L1). It might be useful to store arbitrary Lua objects
   such as cdata objects, functions, ... This function is called for every L1
   miss, in every worker.
-  **Default** no transformation
+  **Default:** no transformation
 
 Example:
 
@@ -291,6 +291,10 @@ options:
   misses (when the L3 callback returns `nil`). The unit is seconds, but
   accepts fractional number parts, like `0.3`. A `neg_ttl` of `0` means the
   cached misses will never expire.
+  **Default:** inherited from the instance.
+- `l1_serializer`: function used to transform the values before setting them
+  in the LRU cache (L1). It might be useful to store arbitrary Lua objects
+  such as cdata objects, functions, ... This function is called on L1 miss.
   **Default:** inherited from the instance.
 
 The third argument `callback` **must** be a function. Its signature and return
@@ -458,7 +462,8 @@ one of [get()](#get).
 
 The third argument `value` is the value to cache, similar to the return value
 of the L3 callback. Just like the callback's return value, it must be a Lua
-scalar, a table, or `nil`.
+scalar, a table, or `nil`. It a `l1_serializer` is provided either from the
+constructor or in the `opts` argument, it will be called with `value`.
 
 On failure, this method returns `nil` and a string describing the error.
 

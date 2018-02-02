@@ -14,6 +14,7 @@ my $pwd = cwd();
 our $HttpConfig = qq{
     lua_package_path "$pwd/lib/?.lua;;";
     lua_shared_dict  cache_shm 1m;
+    lua_shared_dict  ipc_shm 1m;
 
     init_by_lua_block {
         -- local verbose = true
@@ -256,3 +257,127 @@ l1_serializer returned a nil value
 --- no_error_log
 [error]
 
+
+
+=== TEST 7: l1_serializer can be given as a :get() parameter
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache, err = mlcache.new("my_mlcache", "cache_shm")
+
+            if not cache then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            local data, err = cache:get("key", {
+                l1_serializer = function(s)
+                    return string.format("transform(%q)", s)
+                end
+            }, function() return "foo" end)
+            if not data then
+                ngx.say(ngx.ERR, err)
+            end
+            ngx.say(data)
+        }
+    }
+--- request
+GET /t
+--- response_body
+transform("foo")
+--- no_error_log
+[error]
+
+
+
+=== TEST 8: l1_serializer as a :get() parameter has precedence over the constructor one
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache, err = mlcache.new("my_mlcache", "cache_shm", {
+                l1_serializer = function(s)
+                    return string.format("constructor(%q)", s)
+                end
+            })
+
+            if not cache then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            local data, err = cache:get("key1", {
+                l1_serializer = function(s)
+                    return string.format("get_parameter(%q)", s)
+                end
+            }, function() return "foo" end)
+            if not data then
+                ngx.say(ngx.ERR, err)
+            end
+            ngx.say(data)
+
+            local data, err = cache:get("key2", nil, function() return "bar" end)
+            if not data then
+                ngx.say(ngx.ERR, err)
+            end
+            ngx.say(data)
+        }
+    }
+--- request
+GET /t
+--- response_body
+get_parameter("foo")
+constructor("bar")
+--- no_error_log
+[error]
+
+
+
+=== TEST 9: l1_serializer is called for set calls
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache, err = mlcache.new("my_mlcache", "cache_shm", {
+                ipc_shm = "ipc_shm",
+            })
+
+            if not cache then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            local called = false
+            local ok, err = cache:set("key", {
+                l1_serializer = function(s)
+                    called = true
+                    return string.format("transform(%q)", s)
+                end
+            }, "value")
+
+            if not ok then
+                ngx.say(err)
+            end
+            ngx.say(tostring(called))
+
+            local value, err = cache:get("key", nil, error)
+            if not value then
+                ngx.say(err)
+            end
+            ngx.say(value)
+        }
+    }
+--- request
+GET /t
+--- response_body
+true
+transform("value")
+--- no_error_log
+[error]

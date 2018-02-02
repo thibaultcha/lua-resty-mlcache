@@ -258,7 +258,7 @@ function _M.new(name, shm, opts)
 end
 
 
-local function set_lru(self, key, value, ttl, neg_ttl)
+local function set_lru(self, key, value, ttl, neg_ttl, l1_serializer)
     if value == nil then
         if neg_ttl == 0 then
             -- indefinite ttl for lua-resty-lrucache is 'nil'
@@ -275,9 +275,9 @@ local function set_lru(self, key, value, ttl, neg_ttl)
         ttl = nil
     end
 
-    if self.l1_serializer then
+    if l1_serializer then
         local ok
-        ok, value = pcall(self.l1_serializer, value)
+        ok, value = pcall(l1_serializer, value)
         if not ok then
             return nil, "l1_serializer threw an error: " .. value
         elseif value == nil then
@@ -335,7 +335,7 @@ local function set_shm(self, shm_key, value, ttl, neg_ttl)
 end
 
 
-local function get_shm_set_lru(self, key, shm_key)
+local function get_shm_set_lru(self, key, shm_key, l1_serializer)
     local v, err = self.dict:get(shm_key)
     if err then
         return nil, "could not read from lua_shared_dict: " .. err
@@ -356,7 +356,8 @@ local function get_shm_set_lru(self, key, shm_key)
 
         -- value_type of 0 is a nil entry
         if value_type == 0 then
-            return set_lru(self, key, nil, remaining_ttl, remaining_ttl)
+            return set_lru(self, key, nil, remaining_ttl, remaining_ttl,
+                           l1_serializer)
         end
 
         local value, err = unmarshallers[value_type](str_serialized)
@@ -365,7 +366,8 @@ local function get_shm_set_lru(self, key, shm_key)
                         "retrieval: " .. err
         end
 
-        return set_lru(self, key, value, remaining_ttl, remaining_ttl)
+        return set_lru(self, key, value, remaining_ttl, remaining_ttl,
+                       l1_serializer)
     end
 end
 
@@ -373,6 +375,7 @@ end
 local function check_opts(self, opts)
     local ttl
     local neg_ttl
+    local l1_serializer
 
     if opts ~= nil then
         if type(opts) ~= "table" then
@@ -400,6 +403,11 @@ local function check_opts(self, opts)
                 error("opts.neg_ttl must be >= 0", 3)
             end
         end
+
+        l1_serializer = opts.l1_serializer
+        if l1_serializer ~= nil and type(l1_serializer) ~= "function" then
+           error("opts.l1_serializer must be a function", 3)
+        end
     end
 
     if not ttl then
@@ -410,7 +418,11 @@ local function check_opts(self, opts)
         neg_ttl = self.neg_ttl
     end
 
-    return ttl, neg_ttl
+    if not l1_serializer then
+       l1_serializer = self.l1_serializer
+    end
+
+    return ttl, neg_ttl, l1_serializer
 end
 
 
@@ -451,8 +463,12 @@ function _M:get(key, opts, cb, ...)
     -- shm
     local namespaced_key = self.name .. key
 
+    -- opts validation
+
+    local ttl, neg_ttl, l1_serializer = check_opts(self, opts)
+
     local err
-    data, err = get_shm_set_lru(self, key, namespaced_key)
+    data, err = get_shm_set_lru(self, key, namespaced_key, l1_serializer)
     if err then
         return nil, err
     end
@@ -468,10 +484,6 @@ function _M:get(key, opts, cb, ...)
     -- not in shm either
     -- single worker must execute the callback
 
-    -- opts validation
-
-    local ttl, neg_ttl = check_opts(self, opts)
-
     local lock, err = resty_lock:new(self.shm, self.resty_lock_opts)
     if not lock then
         return nil, "could not create lock: " .. err
@@ -484,7 +496,7 @@ function _M:get(key, opts, cb, ...)
 
     -- check for another worker's success at running the callback
 
-    data, err = get_shm_set_lru(self, key, namespaced_key)
+    data, err = get_shm_set_lru(self, key, namespaced_key, l1_serializer)
     if err then
         return unlock_and_ret(lock, nil, err)
     end
@@ -529,7 +541,7 @@ function _M:get(key, opts, cb, ...)
 
     -- set our own worker's LRU cache
 
-    data, err = set_lru(self, key, data, ttl, neg_ttl)
+    data, err = set_lru(self, key, data, ttl, neg_ttl, l1_serializer)
     if data == CACHE_MISS_SENTINEL_LRU then
         data = nil -- convert misses back to nil for return values
     elseif err then
@@ -591,10 +603,10 @@ function _M:set(key, opts, value)
         -- restrict this key to the current namespace, so we isolate this
         -- mlcache instance from potential other instances using the same
         -- shm
-        local ttl, neg_ttl   = check_opts(self, opts)
+        local ttl, neg_ttl, l1_serializer = check_opts(self, opts)
         local namespaced_key = self.name .. key
 
-        set_lru(self, key, value, ttl, neg_ttl)
+        set_lru(self, key, value, ttl, neg_ttl, l1_serializer)
 
         local ok, err = set_shm(self, namespaced_key, value, ttl, neg_ttl)
         if not ok then
