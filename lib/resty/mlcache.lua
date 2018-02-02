@@ -276,12 +276,16 @@ local function set_lru(self, key, value, ttl, neg_ttl, l1_serializer)
     end
 
     if l1_serializer then
-        local ok
-        ok, value = pcall(l1_serializer, value)
+        local ok, err
+        ok, value, err = pcall(l1_serializer, value)
         if not ok then
             return nil, "l1_serializer threw an error: " .. value
         elseif value == nil then
-            return nil, "l1_serializer returned a nil value"
+            if err then
+                return nil, "l1_serializer returned an error: " .. err
+            else
+                return nil, "l1_serializer returned a nil value"
+            end
         end
     end
 

@@ -259,7 +259,41 @@ l1_serializer returned a nil value
 
 
 
-=== TEST 7: l1_serializer can be given as a :get() parameter
+=== TEST 7: l1_serializer can return an error
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache, err = mlcache.new("my_mlcache", "cache_shm", {
+                l1_serializer = function(s)
+                    return nil, "cannot transform"
+                end,
+            })
+            if not cache then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            local data, err = cache:get("key", nil, function() return "foo" end)
+            if not data then
+                ngx.say(err)
+            end
+            ngx.say(data)
+        }
+    }
+--- request
+GET /t
+--- response_body
+l1_serializer returned an error: cannot transform
+nil
+--- no_error_log
+[error]
+
+
+
+=== TEST 8: l1_serializer can be given as a :get() parameter
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -293,7 +327,7 @@ transform("foo")
 
 
 
-=== TEST 8: l1_serializer as a :get() parameter has precedence over the constructor one
+=== TEST 9: l1_serializer as a :get() parameter has precedence over the constructor one
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -338,7 +372,7 @@ constructor("bar")
 
 
 
-=== TEST 9: l1_serializer is called for set calls
+=== TEST 10: l1_serializer is called for set calls
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
