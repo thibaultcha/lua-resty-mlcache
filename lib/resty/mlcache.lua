@@ -181,7 +181,7 @@ function _M.new(name, shm, opts)
         end
 
         if opts.lru_callback ~= nil
-            and type(opts.lru_callback) ~= 'function'
+            and type(opts.lru_callback) ~= "function"
         then
             error("opts.lru_callback must be a function")
         end
@@ -279,9 +279,9 @@ local function set_lru(self, key, value, ttl, neg_ttl)
         local ok
         ok, value = pcall(self.lru_callback, value)
         if not ok then
-            return nil, 'lru_callback threw an error: ' .. value
+            return nil, "lru_callback threw an error: " .. value
         elseif value == nil then
-            return nil, 'lru_callback returned a nil value'
+            return nil, "lru_callback returned a nil value"
         end
     end
 

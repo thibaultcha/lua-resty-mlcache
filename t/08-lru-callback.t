@@ -245,7 +245,7 @@ lru_callback threw an error: .*?: cannot deserialize
             end
 
             local ok, err = cache:get("key", nil, function() return "foo" end)
-            assert(not ok, 'get call returned successfully')
+            assert(not ok, "get call returned successfully")
             ngx.say(err)
         }
     }
