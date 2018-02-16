@@ -582,7 +582,7 @@ GET /t
 --- response_body
 
 --- error_log eval
-qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):2 loop\]/
+qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):2 loop\]/
 
 
 
@@ -614,4 +614,4 @@ GET /t
 --- response_body
 
 --- error_log eval
-qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):2 loop\]/
+qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):2 loop\]/

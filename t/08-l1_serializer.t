@@ -133,7 +133,7 @@ GET /t
 --- response_body
 
 --- error_log eval
-qr/\[TRACE  \s?\d+ content_by_lua\(nginx\.conf:\d+\):18 loop\]/
+qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):18 loop\]/
 --- no_error_log
 [error]
 
