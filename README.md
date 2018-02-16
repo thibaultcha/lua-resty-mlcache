@@ -208,7 +208,7 @@ holding the desired options for this instance. The possible options are:
   cached misses will never expire.
   **Default:** `5`.
 - `lru`: a lua-resty-lrucache instance of your choice. If specified, mlcache
-  will not instanciate an LRU. One can use this value to use the
+  will not instantiate an LRU. One can use this value to use the
   `resty.lrucache.pureffi` implementation of lua-resty-lrucache if desired.
 - `resty_lock_opts`: options for [lua-resty-lock] instances. When mlcache
   runs the L3 callback, it uses lua-resty-lock to ensure that a single
@@ -398,7 +398,7 @@ too volatile (as its size unit is in a number of slots), and the L2 cache is
 still several orders of magnitude faster than the L3 callback.
 
 As its only intent is to take a "peek" into the cache to determine its warmth
-for a given value, `peel()` does not count as a query like [get()](#get), and
+for a given value, `peek()` does not count as a query like [get()](#get), and
 does not set the value in the L1 cache.
 
 Example:
@@ -567,9 +567,9 @@ http {
             end
 
             -- value and other_value are up-to-date because:
-            -- either they were not considered stable and came from L1 (best case scenario)
+            -- either they were not stale and directly came from L1 (best case scenario)
             -- either they were stale and evicted from L1, and came from L2
-            -- either they were not in L1 nor L2, and came from L3 (worst case scneario)
+            -- either they were not in L1 nor L2, and came from L3 (worst case scenario)
         }
     }
 
