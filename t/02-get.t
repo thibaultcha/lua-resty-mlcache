@@ -1222,7 +1222,7 @@ GET /t
 --- response_body
 
 --- error_log eval
-qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
+qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 --- no_error_log
 [error]
 
@@ -1346,7 +1346,7 @@ GET /t
 --- response_body
 
 --- error_log eval
-qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
+qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 --- no_error_log
 [error]
 
@@ -1379,13 +1379,13 @@ GET /t
 --- response_body
 
 --- error_log eval
-qr/\[TRACE   \d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
+qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 --- no_error_log
 [error]
 
 
 
-=== TEST 32: get() allows callback second return value overriding ttl
+=== TEST 32: get() callback's 4th return value can override the ttl
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1436,7 +1436,7 @@ in callback 2
 
 
 
-=== TEST 33: get() allows callback second return value overriding neg_ttl
+=== TEST 33: get() callback's 4th return value can override the neg_ttl
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1487,7 +1487,7 @@ in callback 2
 
 
 
-=== TEST 34: get() ignores invalid callback second return value
+=== TEST 34: get() ignores invalid callback 4th return value (not number, not positive)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {

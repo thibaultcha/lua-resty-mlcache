@@ -19,7 +19,7 @@ run_tests();
 
 __DATA__
 
-=== TEST 1: delete() errors if no ipc module
+=== TEST 1: set() errors if no ipc module
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
