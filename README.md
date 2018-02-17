@@ -143,8 +143,17 @@ http {
     * lua-resty-lock
 
 This library **should** be entirely compatible with older versions of
-OpenResty, but it has only been tested against OpenResty `1.11.2.2` and
-greater.
+OpenResty.
+
+| OpenResty   | Compatibility
+|------------:|:--------------------|
+| <           | not tested
+| `1.11.2.2`  | :heavy_check_mark:
+| `1.11.2.3`  | :heavy_check_mark:
+| `1.11.2.4`  | :heavy_check_mark:
+| `1.11.2.5`  | :heavy_check_mark:
+| `1.13.6.1`  | :heavy_check_mark:
+| >           | not tested
 
 [Back to TOC](#table-of-contents)
 
