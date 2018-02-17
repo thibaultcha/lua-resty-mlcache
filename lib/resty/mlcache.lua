@@ -183,7 +183,7 @@ function _M.new(name, shm, opts)
         if opts.l1_serializer ~= nil
             and type(opts.l1_serializer) ~= "function"
         then
-            error("opts.l1_serializer must be a function")
+            error("opts.l1_serializer must be a function", 2)
         end
     else
         opts = {}
@@ -546,10 +546,12 @@ function _M:get(key, opts, cb, ...)
     -- set our own worker's LRU cache
 
     data, err = set_lru(self, key, data, ttl, neg_ttl, l1_serializer)
-    if data == CACHE_MISS_SENTINEL_LRU then
-        data = nil -- convert misses back to nil for return values
-    elseif err then
+    if err then
         return unlock_and_ret(lock, nil, err)
+    end
+
+    if data == CACHE_MISS_SENTINEL_LRU then
+        return unlock_and_ret(lock, nil, nil, 3)
     end
 
     -- unlock and return
