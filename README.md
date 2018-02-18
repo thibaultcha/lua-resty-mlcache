@@ -73,6 +73,7 @@ The cache level hierarchy is:
     - [peek](#peek)
     - [set](#set)
     - [delete](#delete)
+    - [purge](#purge)
     - [update](#update)
 - [License](#license)
 
@@ -540,11 +541,12 @@ On success, the first return value will be `true`.
 **Note:** methods such as [set()](#set) and [delete()](#delete) require that
 other instances of mlcache (from other workers) evict the value from their
 L1 (LRU) cache. Since OpenResty has currently no built-in mechanism for
-inter-worker communication, this module relies on a polling mechanism via
-a `lua_shared_dict` shared memory zone to propagate inter-worker events. If
-`set()` or `delete()` are called from a single worker, other workers must call
-[update()](#update) before their cache is requested, to make sure they evicted
-their L1 value, and that the L2 (fresh value) will be returned.
+inter-worker communication, this module relies on a polling mechanism via a
+`lua_shared_dict` shared memory zone to propagate inter-worker events. If
+`set()` or `delete()` are called from a single worker, other workers' mlcache
+instances bearing the same `name` must call [update()](#update) before their
+cache be requested during the next request, to make sure they evicted their L1
+value, and that the L2 (fresh value) will be returned.
 
 **Note bis:** It is generally considered inefficient to call `set()` on a hot
 code path (such as in a request being served by OpenResty). Instead, one should
@@ -578,9 +580,45 @@ other instances of mlcache (from other workers) evict the value from their
 L1 (LRU) cache. Since OpenResty has currently no built-in mechanism for
 inter-worker communication, this module relies on a polling mechanism via
 a `lua_shared_dict` shared memory zone to propagate inter-worker events. If
-`set()` or `delete()` are called from a single worker, other workers must call
-[update()](#update) before their cache is requested, to make sure they evicted
-their L1 value, and that the L2 (fresh value) will be returned.
+`set()` or `delete()` are called from a single worker, other workers' mlcache
+instances bearing the same `name` must call [update()](#update) before their
+cache be requested during the next request, to make sure they evicted their L1
+value, and that the L2 (fresh value) will be returned.
+
+**See:** [update()](#update)
+
+[Back to TOC](#table-of-contents)
+
+purge
+-----
+**syntax:** `ok, err = cache:purge(flush_expired?)`
+
+Purge the content of the cache, in both the L1 and L2 levels. Then publishes
+an event to other workers so they can purge their L1 cache as well.
+
+This method recycles the lua-resty-lrucache instance, and calls
+[ngx.shared.DICT:flush_all](https://github.com/openresty/lua-nginx-module#ngxshareddictflush_all)
+, so it can be rather expensive.
+
+The first and only argument `flush_expired` is optional, but if given `true`,
+this method will also call
+[ngx.shared.DICT:flush_expired](https://github.com/openresty/lua-nginx-module#ngxshareddictflush_expired)
+(with no arguments). This is useful to release memory claimed by the L2 (shm)
+cache if needed.
+
+On failure, this method returns `nil` and a string describing the error.
+
+On success, the first return value will be `true`.
+
+**Note:** this method, just like [delete()](#delete), requires that
+other instances of mlcache (from other workers) purge their L1 (LRU) cache.
+Since OpenResty has currently no built-in mechanism for inter-worker
+communication, this module relies on a polling mechanism via a
+`lua_shared_dict` shared memory zone to propagate inter-worker events. If
+this method is called from a single worker, other workers' mlcache instances
+bearing the same `name` must call [update()](#update) before their cache be
+requested during the next request, to make sure they purged their L1 cache as
+well.
 
 **See:** [update()](#update)
 
@@ -610,7 +648,7 @@ processing. This allows your hot code paths to perform a single shm access in
 the best case scenario: no invalidation events were received, all `get()`
 calls will hit in the L1 (LRU) cache. Only on a worst case scenario (`n` values
 were evicted by another worker) will `get()` access the L2 or L3 cache `n`
-times.  Subsequent requests will then hit the best case scenario again, because
+times. Subsequent requests will then hit the best case scenario again, because
 `get()` populated the L1 cache.
 
 For example, if your workers make use of [set()](#set) or [delete()](#delete)
@@ -629,7 +667,7 @@ http {
             -- before calling get()
             local ok, err = cache:update()
             if not ok then
-                ngx.log(ngx.ERR, "failed to poll eviciton events: ", err)
+                ngx.log(ngx.ERR, "failed to poll eviction events: ", err)
                 -- /!\ we might get stale data from get()
             end
 

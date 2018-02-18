@@ -123,6 +123,51 @@ local unmarshallers = {
 }
 
 
+local function rebuild_lru(self)
+    local name = self.name
+
+    if self.lru then
+        -- When calling purge(), we invalidate the entire LRU by
+        -- GC-ing it.
+        -- lua-resty-lrucache has a 'flush_all()' method in development
+        -- which would be more appropriate:
+        -- https://github.com/openresty/lua-resty-lrucache/pull/23
+        LRU_INSTANCES[name] = nil
+        self.c_lru_gc = nil
+        self.lru = nil
+    end
+
+    -- Several mlcache instances can have the same name and hence, the same
+    -- lru instance. We need to GC such LRU instances when all mlcache
+    -- instances using them are GC'ed.
+    -- We do this by using a C struct with a __gc metamethod.
+
+    local c_lru_gc    = ffi.new(c_lru_gc_type)
+    c_lru_gc.len      = #name
+    c_lru_gc.lru_name = ffi.cast(c_str_type, name)
+
+    -- keep track of our LRU instance and a counter of how many mlcache
+    -- instances are refering to it
+
+    local lru_gc = LRU_INSTANCES[name]
+    if not lru_gc then
+        lru_gc              = { count = 0, lru = nil }
+        LRU_INSTANCES[name] = lru_gc
+    end
+
+    local lru = lru_gc.lru
+    if not lru then
+        lru        = lrucache.new(self.lru_size)
+        lru_gc.lru = lru
+    end
+
+    self.lru      = lru
+    self.c_lru_gc = c_lru_gc
+
+    lru_gc.count = lru_gc.count + 1
+end
+
+
 local _M     = {
     _VERSION = "1.0.1",
     _AUTHOR  = "Thibault Charbonnier",
@@ -200,6 +245,7 @@ function _M.new(name, shm, opts)
         shm             = shm,
         ttl             = opts.ttl     or 30,
         neg_ttl         = opts.neg_ttl or 5,
+        lru_size        = opts.lru_size or 100,
         resty_lock_opts = opts.resty_lock_opts,
         l1_serializer   = opts.l1_serializer,
     }
@@ -214,9 +260,14 @@ function _M.new(name, shm, opts)
         end
 
         self.ipc_invalidation_channel = fmt("mlcache:invalidations:%s", name)
+        self.ipc_purge_channel = fmt("mlcache:purge:%s", name)
 
         self.ipc:subscribe(self.ipc_invalidation_channel, function(key)
             self.lru:delete(key)
+        end)
+
+        self.ipc:subscribe(self.ipc_purge_channel, function()
+            rebuild_lru(self)
         end)
     end
 
@@ -224,34 +275,7 @@ function _M.new(name, shm, opts)
         self.lru = opts.lru
 
     else
-        -- Several mlcache instances can have the same name and hence, the same
-        -- lru instance. We need to GC such LRU instances when all mlcache
-        -- instances using them are GC'ed.
-        -- We do this by using a C struct with a __gc metamethod.
-
-        local c_lru_gc    = ffi.new(c_lru_gc_type)
-        c_lru_gc.lru_name = ffi.cast(c_str_type, name)
-        c_lru_gc.len      = #name
-
-        -- keep track of our LRU instance and a counter of how many mlcache
-        -- instances are refering to it
-
-        local lru_gc = LRU_INSTANCES[name]
-        if not lru_gc then
-            lru_gc              = { count = 0, lru = nil }
-            LRU_INSTANCES[name] = lru_gc
-        end
-
-        local lru = lru_gc.lru
-        if not lru then
-            lru        = lrucache.new(opts.lru_size or 100)
-            lru_gc.lru = lru
-        end
-
-        self.lru      = lru
-        self.c_lru_gc = c_lru_gc
-
-        lru_gc.count = lru_gc.count + 1
+        rebuild_lru(self)
     end
 
     return setmetatable(self, mt)
@@ -659,6 +683,30 @@ function _M:delete(key)
     local ok, err = self.ipc:broadcast(self.ipc_invalidation_channel, key)
     if not ok then
         return nil, "could not broadcast deletion: " .. err
+    end
+
+    return true
+end
+
+
+function _M:purge(flush_expired)
+    if not self.ipc then
+        error("no ipc to propagate purge, specify ipc_shm", 2)
+    end
+
+    -- clear shm first
+    self.dict:flush_all()
+
+    if flush_expired then
+        self.dict:flush_expired()
+    end
+
+    -- clear LRU content and propagate
+    rebuild_lru(self)
+
+    local ok, err = self.ipc:broadcast(self.ipc_purge_channel, "")
+    if not ok then
+        return nil, "could not broadcast purge: " .. err
     end
 
     return true

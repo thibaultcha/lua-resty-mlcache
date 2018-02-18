@@ -319,3 +319,45 @@ GET /t
 received event from cache_1 invalidations: my_key
 --- no_error_log
 received event from cache_2 invalidations: my_key
+
+
+
+=== TEST 8: multiple instances with different names broadcasting the purge() are isolated
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            -- create 2 mlcaches
+
+            local cache_1 = assert(mlcache.new("my_mlcache_1", "cache_shm", {
+                ipc_shm = "ipc_shm",
+                debug   = true, -- allows same worker to receive its own published events
+            }))
+            local cache_2 = assert(mlcache.new("my_mlcache_2", "cache_shm", {
+                ipc_shm = "ipc_shm",
+                debug   = true, -- allows same worker to receive its own published events
+            }))
+
+            cache_1.ipc:subscribe("mlcache:purge:" .. cache_1.name, function(data)
+                ngx.log(ngx.NOTICE, "received event from cache_1 purge")
+            end)
+
+            cache_2.ipc:subscribe("mlcache:purge:" .. cache_2.name, function(data)
+                ngx.log(ngx.NOTICE, "received event from cache_2 purge")
+            end)
+
+            assert(cache_1:purge())
+
+            assert(cache_2:update())
+            assert(cache_1:update())
+        }
+    }
+--- request
+GET /t
+--- ignore_response_body
+--- error_log
+received event from cache_1 purge
+--- no_error_log
+received event from cache_2 purge
