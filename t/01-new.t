@@ -147,7 +147,7 @@ no such lua_shared_dict: foo
 
 
 
-=== TEST 7: new() ensures ipc shm exists
+=== TEST 7: new() ensures opts.ipc_shm exists
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -169,7 +169,7 @@ no such lua_shared_dict: ipc
 
 
 
-=== TEST 8: new() validates lru_size
+=== TEST 8: new() validates opts.lru_size
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -225,7 +225,7 @@ opts.ttl must be >= 0
 
 
 
-=== TEST 10: new() validates neg_ttl
+=== TEST 10: new() validates opts.neg_ttl
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -257,7 +257,31 @@ opts.neg_ttl must be >= 0
 
 
 
-=== TEST 11: new() creates an mlcache object with defaults
+=== TEST 11: new() validates opts.resty_lock_opts
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local ok, err = pcall(mlcache.new, "name", "cache_shm", {
+                resty_lock_opts = false,
+            })
+            if not ok then
+                ngx.log(ngx.ERR, err)
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body
+
+--- error_log
+opts.resty_lock_opts must be a table
+
+
+
+=== TEST 12: new() creates an mlcache object with default attributes
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -285,7 +309,7 @@ number
 
 
 
-=== TEST 12: new() accepts user-provided LRU instances
+=== TEST 13: new() accepts user-provided LRU instances via opts.lru
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {

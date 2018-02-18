@@ -1563,3 +1563,46 @@ in negative callback
 in positive callback
 --- no_error_log
 [error]
+
+
+
+=== TEST 35: get() passes 'resty_lock_opts' for L3 calls
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local resty_lock = require "resty.lock"
+            local mlcache = require "resty.mlcache"
+
+            local resty_lock_opts = { timeout = 5 }
+
+            do
+                local orig_resty_lock_new = resty_lock.new
+                resty_lock.new = function(_, dict_name, opts, ...)
+                    ngx.say("was given 'opts.resty_lock_opts': ", opts == resty_lock_opts)
+
+                    return orig_resty_lock_new(_, dict_name, opts, ...)
+                end
+            end
+
+            local cache, err = mlcache.new("my_mlcache", "cache_shm", {
+                resty_lock_opts = resty_lock_opts,
+            })
+            if not cache then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            local data, err = cache:get("key", nil, function() return nil end)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body
+was given 'opts.resty_lock_opts': true
+--- no_error_log
+[error]
