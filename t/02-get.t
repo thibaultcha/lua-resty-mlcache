@@ -1385,7 +1385,49 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 
 
 
-=== TEST 32: get() callback's 4th return value can override the ttl
+=== TEST 32: get() callback can return nil + err
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
+
+            local function cb()
+                return nil, "an error occurred"
+            end
+
+            -- cache our value (runs cb)
+
+            local data, err = cache:get("1", nil, cb)
+            if err then
+                ngx.say("cb return values: ", data, " ", err)
+            end
+
+            local function cb2()
+                -- we will return "foo" to users as well from get(), and
+                -- not just nil, if they wish so.
+                return "foo", "an error occurred again"
+            end
+
+            data, err = cache:get("2", nil, cb2)
+            if err then
+                ngx.say("cb2 return values: ", data, " ", err)
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body
+cb return values: nil an error occurred
+cb2 return values: foo an error occurred again
+--- no_error_log
+[error]
+
+
+
+=== TEST 33: get() callback's 3th return value can override the ttl
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1436,7 +1478,7 @@ in callback 2
 
 
 
-=== TEST 33: get() callback's 4th return value can override the neg_ttl
+=== TEST 34: get() callback's 3th return value can override the neg_ttl
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1487,7 +1529,7 @@ in callback 2
 
 
 
-=== TEST 34: get() ignores invalid callback 4th return value (not number, not positive)
+=== TEST 35: get() ignores invalid callback 3th return value (not number, not positive)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1566,7 +1608,7 @@ in positive callback
 
 
 
-=== TEST 35: get() passes 'resty_lock_opts' for L3 calls
+=== TEST 36: get() passes 'resty_lock_opts' for L3 calls
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {

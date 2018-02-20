@@ -330,15 +330,15 @@ local function callback(arg1, arg2, arg3)
     -- ...
 
     -- value: the value to cache (Lua scalar or table)
-    -- nil: ignored for now - will be used in later versions of this module
+    -- err: if not `nil`, will abort get(), which will return `value` and `err`
     -- ttl: ttl for this value - will override `ttl` or `neg_ttl` if specified
     return value, nil, ttl
 end
 ```
 
 This function **can** throw Lua errors as it runs in protected mode. Such
-errors thrown from the callback will be logged by this module for debug
-purposes.
+errors thrown from the callback will be returned as strings in the second
+return value `err`.
 
 When called, `get()` follows the below steps:
 
@@ -379,14 +379,15 @@ end
 local function fetch_user(db, user_id)
     local user, err = db:query_user(user_id)
     if err then
-        error(err) -- safe to throw: will be logged
+        -- in this case, get() will return `nil` + `err`
+        return nil, err
     end
 
     return user -- table or nil
 end
 
-local db      = my_db_connection -- lua-resty-mysql instance
 local user_id = 3
+local db = my_db_connection -- lua-resty-mysql instance
 
 local user, err = cache:get("users:" .. user_id, { ttl = 3600 }, fetch_user, db, user_id)
 if err then

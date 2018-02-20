@@ -516,16 +516,18 @@ function _M:get(key, opts, cb, ...)
     end
 
     -- still not in shm, we are responsible for running the callback
-    --
-    -- Note: the `_` variable is a placeholder for forward compatibility
-    -- for callback-returned errors
 
-    local ok, err, _, new_ttl = pcall(cb, ...)
-    if not ok then
-        return unlock_and_ret(lock, nil, "callback threw an error: " .. err)
+    local pok, perr, err, new_ttl = pcall(cb, ...)
+    if not pok then
+        return unlock_and_ret(lock, nil, "callback threw an error: " .. perr)
     end
 
-    data = err
+    data = perr
+
+    if err then
+        -- callback returned nil + err
+        return unlock_and_ret(lock, data, err)
+    end
 
     -- override ttl / neg_ttl
 
