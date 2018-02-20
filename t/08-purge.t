@@ -20,7 +20,7 @@ run_tests();
 
 __DATA__
 
-=== TEST 1: purge() errors if no ipc module
+=== TEST 1: purge() errors if no ipc
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -36,7 +36,7 @@ __DATA__
 --- request
 GET /t
 --- response_body
-no ipc to propagate purge, specify ipc_shm
+no ipc to propagate purge, specify opts.ipc
 --- no_error_log
 [error]
 
@@ -50,7 +50,10 @@ no ipc to propagate purge, specify ipc_shm
             local mlcache = require "resty.mlcache"
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
-                ipc_shm = "ipc_shm",
+                ipc = {
+                    type = "mlcache_ipc",
+                    shm = "ipc_shm",
+                }
             }))
 
             -- populate mlcache
@@ -95,7 +98,10 @@ ok
             local mlcache = require "resty.mlcache"
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
-                ipc_shm = "ipc_shm",
+                ipc = {
+                    type = "mlcache_ipc",
+                    shm = "ipc_shm",
+                }
             }))
 
             -- populate mlcache
@@ -148,7 +154,10 @@ ok
             local mlcache = require "resty.mlcache"
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
-                ipc_shm = "ipc_shm",
+                ipc = {
+                    type = "mlcache_ipc",
+                    shm = "ipc_shm",
+                }
             }))
 
             assert(cache:purge())
@@ -185,7 +194,10 @@ flush_expired called with 'max_count'
             local mlcache = require "resty.mlcache"
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
-                ipc_shm = "ipc_shm",
+                ipc = {
+                    type = "mlcache_ipc",
+                    shm = "ipc_shm",
+                }
             }))
 
             assert(cache:purge(true))
@@ -200,7 +212,7 @@ flush_expired called with 'max_count': nil
 
 
 
-=== TEST 6: purge() invalidates other workers' LRU cache
+=== TEST 6: purge() calls broadcast() on purge channel
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -208,22 +220,27 @@ flush_expired called with 'max_count': nil
             local mlcache = require "resty.mlcache"
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
-                ipc_shm = "ipc_shm",
-                debug   = true, -- allows same worker to receive its own published events
+                ipc = {
+                    type = "custom",
+                    register_listeners = function() end,
+                    broadcast = function(channel, data, ...)
+                        ngx.say("channel: ", channel)
+                        ngx.say("data:", data)
+                        ngx.say("other args:", ...)
+                        return true
+                    end,
+                    poll = function() end,
+                }
             }))
 
-            cache.ipc:subscribe("mlcache:purge:" .. cache.name, function()
-                ngx.say("received event from purge channel")
-            end)
-
             assert(cache:purge())
-
-            assert(cache:update())
         }
     }
 --- request
 GET /t
 --- response_body
-received event from purge channel
+channel: mlcache:purge:my_mlcache
+data:
+other args:
 --- no_error_log
 [error]

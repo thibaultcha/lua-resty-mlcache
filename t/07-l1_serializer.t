@@ -549,7 +549,10 @@ opts.l1_serializer must be a function
             local mlcache = require "resty.mlcache"
 
             local cache, err = mlcache.new("my_mlcache", "cache_shm", {
-                ipc_shm = "ipc_shm",
+                ipc = {
+                    type = "mlcache_ipc",
+                    shm = "ipc_shm",
+                },
                 l1_serializer = function(s)
                     return string.format("transform(%q)", s)
                 end
@@ -591,7 +594,10 @@ transform("value")
             local mlcache = require "resty.mlcache"
 
             local cache, err = mlcache.new("my_mlcache", "cache_shm", {
-                ipc_shm = "ipc_shm",
+                ipc = {
+                    type = "mlcache_ipc",
+                    shm = "ipc_shm",
+                },
                 l1_serializer = function(s)
                     return string.format("constructor(%q)", s)
                 end
@@ -637,7 +643,10 @@ set_argument("value")
             local mlcache = require "resty.mlcache"
 
             local cache, err = mlcache.new("my_mlcache", "cache_shm", {
-                ipc_shm = "ipc_shm",
+                ipc = {
+                    type = "mlcache_ipc",
+                    shm = "ipc_shm",
+                }
             })
             if not cache then
                 ngx.log(ngx.ERR, err)

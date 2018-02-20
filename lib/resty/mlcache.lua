@@ -222,7 +222,52 @@ function _M.new(name, shm, opts)
         end
 
         if opts.ipc_shm ~= nil and type(opts.ipc_shm) ~= "string" then
+            -- Support for deprecated `ipc_shm` option.
+            -- TODO: eventually remove.
             error("opts.ipc_shm must be a string", 2)
+        end
+
+        if opts.ipc ~= nil then
+            if type(opts.ipc) ~= "table" then
+                error("opts.ipc must be a table", 2)
+            end
+
+            if opts.ipc.type ~= "mlcache_ipc"
+                and opts.ipc.type ~= "custom"
+            then
+                error("opts.ipc.type must be one of 'mlcache_ipc' or 'custom'",
+                      2)
+            end
+
+            if opts.ipc.type == "mlcache_ipc"
+                and type(opts.ipc.shm) ~= "string"
+            then
+                error("opts.ipc.shm must be a string", 2)
+
+            elseif opts.ipc.type == "custom" then
+                if type(opts.ipc.register_listeners) ~= "function" then
+                    error("opts.ipc.register_listeners must be a function", 2)
+                end
+
+                if type(opts.ipc.broadcast) ~= "function" then
+                    error("opts.ipc.broadcast must be a function", 2)
+                end
+
+                if type(opts.ipc.poll) ~= "function" then
+                    error("opts.ipc.poll must be a function", 2)
+                end
+            end
+
+        elseif opts.ipc_shm then
+            -- Support for deprecated `ipc_shm` option.
+            -- TODO: eventually remove.
+            ngx.log(ngx.WARN, "[lua-resty-mlcache] the 'opts.ipc_shm' option ",
+                              "is deprecated, use 'opts.ipc' instead")
+
+            opts.ipc = {
+                type = "mlcache_ipc",
+                shm = opts.ipc_shm,
+            }
         end
 
         if opts.l1_serializer ~= nil
@@ -250,25 +295,58 @@ function _M.new(name, shm, opts)
         l1_serializer   = opts.l1_serializer,
     }
 
-    if opts.ipc_shm then
-        local mlcache_ipc = require "resty.mlcache.ipc"
+    if opts.ipc then
+        self.events = {
+            ["invalidation"] = {
+                channel = fmt("mlcache:invalidations:%s", name),
+                handler = function(key)
+                    self.lru:delete(key)
+                end,
+            },
+            ["purge"] = {
+                channel = fmt("mlcache:purge:%s", name),
+                handler = function()
+                    rebuild_lru(self)
+                end,
+            }
+        }
 
-        local err
-        self.ipc, err = mlcache_ipc.new(opts.ipc_shm, opts.debug)
-        if not self.ipc then
-            return nil, "could not instanciate mlcache.ipc: " .. err
+        if opts.ipc.type == "mlcache_ipc" then
+            local mlcache_ipc = require "resty.mlcache.ipc"
+
+            local ipc, err = mlcache_ipc.new(opts.ipc.shm, opts.ipc.debug)
+            if not ipc then
+                return nil, "failed to initialize mlcache IPC " ..
+                            "(could not instantiate mlcache.ipc): " .. err
+            end
+
+            for _, ev in pairs(self.events) do
+                ipc:subscribe(ev.channel, ev.handler)
+            end
+
+            self.broadcast = function(channel, data)
+                return ipc:broadcast(channel, data)
+            end
+
+            self.poll = function(timeout)
+                return ipc:poll(timeout)
+            end
+
+            self.ipc = ipc
+
+        elseif opts.ipc.type == "custom" then
+            local ok, err = opts.ipc.register_listeners(self.events)
+            if not ok and err ~= nil then
+                return nil, "failed to initialize custom IPC " ..
+                            "(opts.ipc.register_listeners returned an error): "
+                            .. err
+            end
+
+            self.broadcast = opts.ipc.broadcast
+            self.poll = opts.ipc.poll
+
+            self.ipc = true
         end
-
-        self.ipc_invalidation_channel = fmt("mlcache:invalidations:%s", name)
-        self.ipc_purge_channel = fmt("mlcache:purge:%s", name)
-
-        self.ipc:subscribe(self.ipc_invalidation_channel, function(key)
-            self.lru:delete(key)
-        end)
-
-        self.ipc:subscribe(self.ipc_purge_channel, function()
-            rebuild_lru(self)
-        end)
     end
 
     if opts.lru then
@@ -626,7 +704,7 @@ end
 
 function _M:set(key, opts, value)
     if not self.ipc then
-        error("no ipc to propagate update, specify ipc_shm", 2)
+        error("no ipc to propagate update, specify opts.ipc", 2)
     end
 
     if type(key) ~= "string" then
@@ -648,7 +726,7 @@ function _M:set(key, opts, value)
         end
     end
 
-    local ok, err = self.ipc:broadcast(self.ipc_invalidation_channel, key)
+    local ok, err = self.broadcast(self.events.invalidation.channel, key)
     if not ok then
         return nil, "could not broadcast update: " .. err
     end
@@ -659,7 +737,7 @@ end
 
 function _M:delete(key)
     if not self.ipc then
-        error("no ipc to propagate deletion, specify ipc_shm", 2)
+        error("no ipc to propagate deletion, specify opts.ipc", 2)
     end
 
     if type(key) ~= "string" then
@@ -682,7 +760,7 @@ function _M:delete(key)
     -- delete from LRU and propagate
     self.lru:delete(key)
 
-    local ok, err = self.ipc:broadcast(self.ipc_invalidation_channel, key)
+    local ok, err = self.broadcast(self.events.invalidation.channel, key)
     if not ok then
         return nil, "could not broadcast deletion: " .. err
     end
@@ -693,7 +771,7 @@ end
 
 function _M:purge(flush_expired)
     if not self.ipc then
-        error("no ipc to propagate purge, specify ipc_shm", 2)
+        error("no ipc to propagate purge, specify opts.ipc", 2)
     end
 
     -- clear shm first
@@ -706,8 +784,8 @@ function _M:purge(flush_expired)
     -- clear LRU content and propagate
     rebuild_lru(self)
 
-    local ok, err = self.ipc:broadcast(self.ipc_purge_channel, "")
-    if not ok then
+    local ok, err = self.broadcast(self.events.purge.channel, "")
+    if not ok and err ~= nil then
         return nil, "could not broadcast purge: " .. err
     end
 
@@ -717,11 +795,11 @@ end
 
 function _M:update(timeout)
     if not self.ipc then
-        error("no ipc to poll updates, specify ipc_shm", 2)
+        error("no ipc to poll updates, specify opts.ipc", 2)
     end
 
-    local ok, err = self.ipc:poll(timeout)
-    if not ok then
+    local ok, err = self.poll(timeout)
+    if not ok and err ~= nil then
         return nil, "could not poll ipc events: " .. err
     end
 

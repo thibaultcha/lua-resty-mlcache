@@ -174,8 +174,18 @@ cache_2 shm has: value B
 
             -- create 2 mlcache
 
-            local cache_1 = assert(mlcache.new("my_mlcache_1", "cache_shm", { ipc_shm = "ipc_shm" }))
-            local cache_2 = assert(mlcache.new("my_mlcache_2", "cache_shm", { ipc_shm = "ipc_shm" }))
+            local cache_1 = assert(mlcache.new("my_mlcache_1", "cache_shm", {
+                ipc = {
+                    type = "mlcache_ipc",
+                    shm = "ipc_shm",
+                }
+            }))
+            local cache_2 = assert(mlcache.new("my_mlcache_2", "cache_shm", {
+                ipc = {
+                    type = "mlcache_ipc",
+                    shm = "ipc_shm",
+                }
+            }))
 
             -- set 2 values in both mlcaches
 
@@ -239,8 +249,18 @@ cache_2 lru has: value B
 
             -- create 2 mlcaches
 
-            local cache_1 = assert(mlcache.new("my_mlcache_1", "cache_shm", { ipc_shm = "ipc_shm" }))
-            local cache_2 = assert(mlcache.new("my_mlcache_2", "cache_shm", { ipc_shm = "ipc_shm" }))
+            local cache_1 = assert(mlcache.new("my_mlcache_1", "cache_shm", {
+                ipc = {
+                    type = "mlcache_ipc",
+                    shm = "ipc_shm",
+                }
+            }))
+            local cache_2 = assert(mlcache.new("my_mlcache_2", "cache_shm", {
+                ipc = {
+                    type = "mlcache_ipc",
+                    shm = "ipc_shm",
+                }
+            }))
 
             -- reset LRUs so repeated tests allow the below get() to set the
             -- value in the shm
@@ -280,7 +300,7 @@ cache_2 value: value B
 
 
 
-=== TEST 7: multiple instances with different names broadcasting the delete() of same key are isolated
+=== TEST 7: non-namespaced instances use different delete() broadcast channel
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -290,39 +310,43 @@ cache_2 value: value B
             -- create 2 mlcaches
 
             local cache_1 = assert(mlcache.new("my_mlcache_1", "cache_shm", {
-                ipc_shm = "ipc_shm",
-                debug   = true, -- allows same worker to receive its own published events
+                ipc = {
+                    type = "custom",
+                    register_listeners = function() end,
+                    broadcast = function(channel)
+                        ngx.say("cache_1 channel: ", channel)
+                        return true
+                    end,
+                    poll = function() end,
+                }
             }))
             local cache_2 = assert(mlcache.new("my_mlcache_2", "cache_shm", {
-                ipc_shm = "ipc_shm",
-                debug   = true, -- allows same worker to receive its own published events
+                ipc = {
+                    type = "custom",
+                    register_listeners = function() end,
+                    broadcast = function(channel)
+                        ngx.say("cache_2 channel: ", channel)
+                        return true
+                    end,
+                    poll = function() end,
+                }
             }))
-
-            cache_1.ipc:subscribe("mlcache:invalidations:" .. cache_1.name, function(data)
-                ngx.log(ngx.NOTICE, "received event from cache_1 invalidations: ", data)
-            end)
-
-            cache_2.ipc:subscribe("mlcache:invalidations:" .. cache_2.name, function(data)
-                ngx.log(ngx.NOTICE, "received event from cache_2 invalidations: ", data)
-            end)
 
             assert(cache_1:delete("my_key"))
-
-            assert(cache_2:update())
-            assert(cache_1:update())
+            assert(cache_2:delete("my_key"))
         }
     }
 --- request
 GET /t
---- ignore_response_body
---- error_log
-received event from cache_1 invalidations: my_key
+--- response_body
+cache_1 channel: mlcache:invalidations:my_mlcache_1
+cache_2 channel: mlcache:invalidations:my_mlcache_2
 --- no_error_log
-received event from cache_2 invalidations: my_key
+[error]
 
 
 
-=== TEST 8: multiple instances with different names broadcasting the purge() are isolated
+=== TEST 8: non-namespaced instances use different purge() broadcast channel
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -332,32 +356,36 @@ received event from cache_2 invalidations: my_key
             -- create 2 mlcaches
 
             local cache_1 = assert(mlcache.new("my_mlcache_1", "cache_shm", {
-                ipc_shm = "ipc_shm",
-                debug   = true, -- allows same worker to receive its own published events
+                ipc = {
+                    type = "custom",
+                    register_listeners = function() end,
+                    broadcast = function(channel)
+                        ngx.say("cache_1 channel: ", channel)
+                        return true
+                    end,
+                    poll = function() end,
+                }
             }))
             local cache_2 = assert(mlcache.new("my_mlcache_2", "cache_shm", {
-                ipc_shm = "ipc_shm",
-                debug   = true, -- allows same worker to receive its own published events
+                ipc = {
+                    type = "custom",
+                    register_listeners = function() end,
+                    broadcast = function(channel)
+                        ngx.say("cache_2 channel: ", channel)
+                        return true
+                    end,
+                    poll = function() end,
+                }
             }))
 
-            cache_1.ipc:subscribe("mlcache:purge:" .. cache_1.name, function(data)
-                ngx.log(ngx.NOTICE, "received event from cache_1 purge")
-            end)
-
-            cache_2.ipc:subscribe("mlcache:purge:" .. cache_2.name, function(data)
-                ngx.log(ngx.NOTICE, "received event from cache_2 purge")
-            end)
-
             assert(cache_1:purge())
-
-            assert(cache_2:update())
-            assert(cache_1:update())
+            assert(cache_2:purge())
         }
     }
 --- request
 GET /t
---- ignore_response_body
---- error_log
-received event from cache_1 purge
+--- response_body
+cache_1 channel: mlcache:purge:my_mlcache_1
+cache_2 channel: mlcache:purge:my_mlcache_2
 --- no_error_log
-received event from cache_2 purge
+[error]
