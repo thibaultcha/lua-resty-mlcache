@@ -223,24 +223,24 @@ holding the desired options for this instance. The possible options are:
 - `resty_lock_opts`: options for [lua-resty-lock] instances. When mlcache
   runs the L3 callback, it uses lua-resty-lock to ensure that a single
   worker runs the provided callback.
-- `ipc`: if you wish to use [set()](#set), [delete()](#delete), or
-  [purge()](#purge), you must provide an IPC (Inter-process communication)
-  mechanism for workers to invalidate their L1 LRU caches. This module
-  bundles an "off the shelf" IPC library, and you can enable it by
-  specifying a dedicated `lua_shared_dict`, like so:
-  `{ ipc = { type = "mlcache", shm = "ipc_shm" } }`. Several mlcache instances
-  can use the same `shm` (events will be namespaced). See an example below.
-  A `custom` mode is also supported and lets you use your the IPC library of
-  your choice.
 - `l1_serializer`: an _optional_ function. Its signature and accepted values
-  are documented under the [get()](#get) method, along with an example.
-  If specified, this function will be called by each worker every time the L1
-  LRU cache is a miss and the value needs to be fetched from a lower cache
-  level (L2/L3).
-  Its purpose is to perform arbitrary serialization of the cached item to
-  transform it into any Lua object _before_ storing it into the L1 LRU cache.
-  It can thus avoid your application from having to repeat such transformation
-  upon every cache hit, such as creating tables, cdata objects, functions, etc...
+  are documented under the [get()](#get) method, along with an example.  If
+  specified, this function will be called by each worker every time the L1 LRU
+  cache is a miss and the value needs to be fetched from a lower cache level
+  (L2/L3).  Its purpose is to perform arbitrary serialization of the cached
+  item to transform it into any Lua object _before_ storing it into the L1 LRU
+  cache.  It can thus avoid your application from having to repeat such
+  transformation upon every cache hit, such as creating tables, cdata objects,
+  functions, etc...
+- `ipc_shm`: _optional_ string. If you wish to use [set()](#set),
+  [delete()](#delete), or [purge()](#purge), you must provide an IPC
+  (Inter-process communication) mechanism for workers to invalidate their L1
+  LRU caches. This module bundles an "off the shelf" IPC library, and you can
+  enable it by specifying a dedicated `lua_shared_dict` in this option. Several
+  mlcache instances can use the same shared dict (events will be namespaced),
+  but no other actor than mlcache should tamper with it.
+- `ipc`: an _optional_ table . Like the above `ipc_shm` option, but lets you use
+  the IPC library of your choice to send inter-worker events.
 
 Example:
 
@@ -273,8 +273,8 @@ will rely on the same shm: `lua_shared_dict cache_shared_dict 2048m;`. Even if
 you use identical keys in both caches, they will not conflict with each other
 since they each bear a different name.
 
-This other example instanciates an mlcache using the bundled `mlcache_ipc`
-module for inter-workers invalidation events (so we can use [set()](#set),
+This other example instanciates an mlcache using the bundled IPC module for
+inter-workers invalidation events (so we can use [set()](#set),
 [delete()](#delete), and [purge()](#purge)):
 
 ```lua
@@ -282,10 +282,7 @@ local mlcache = require "resty.mlcache"
 
 local cache, err = mlcache.new("my_cache_with_ipc", "cache_shared_dict", {
     lru_size = 1000,
-    ipc = {
-        mode = "mlcache_ipc",
-        shm = "ipc_shared_dict"
-    }
+    ipc_shm = "ipc_shared_dict"
 })
 ```
 
@@ -652,12 +649,12 @@ update
 Poll and execute pending cache invalidation events published by other workers.
 
 Methods such as [set()](#set) and [delete()](#delete) require that other
-instances of mlcache (from other workers) evict the value from their L1 (LRU)
-cache. Since OpenResty has currently no built-in mechanism for inter-worker
-communication, this module relies on a polling mechanism via the `opts.ipc`
-option to propagate inter-worker events. If the bundled `mlcache_ipc` option
-is used, the `lua_shared_dict` specified in the `shm` option **must not** be
-used by other actors than mlcache itself.
+instances of mlcache (from other workers) evict the value from their L1 cache.
+Since OpenResty has currently no built-in mechanism for inter-worker
+communication, this module bundles an "off the shelf" IPC library to propagate
+inter-worker events. If the bundled IPC library is used, the `lua_shared_dict`
+specified in the `ipc_shm` option **must not** be used by other actors than
+mlcache itself.
 
 This method allows a worker to update its L1 cache (by purging values
 considered stale due to an other worker calling `set()` or `delete()`) before
@@ -748,10 +745,10 @@ expire naturally from the L1/L2 caches according to their TTL.
 
 **Note bis:** this library was built with the intent to use a better solution
 for inter-worker communication as soon as one emerges. In future versions of
-this library, if an IPC module can avoid the polling approach, so will this
+this library, if an IPC library can avoid the polling approach, so will this
 library. `update()` is only a necessary evil due to today's Nginx/OpenResty
-"limitations". You can however use your own IPC module by use of the `opts.ipc`
-option when instantiating your mlcache.
+"limitations". You can however use your own IPC library by use of the
+`opts.ipc` option when instantiating your mlcache.
 
 [Back to TOC](#table-of-contents)
 

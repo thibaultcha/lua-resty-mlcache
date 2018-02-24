@@ -37,7 +37,7 @@ __DATA__
 --- request
 GET /t
 --- response_body
-no ipc to propagate deletion, specify opts.ipc
+no ipc to propagate deletion, specify opts.ipc_shm or opts.ipc
 --- no_error_log
 [error]
 
@@ -51,10 +51,7 @@ no ipc to propagate deletion, specify opts.ipc
             local mlcache = require "resty.mlcache"
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
-                ipc = {
-                    type = "mlcache_ipc",
-                    shm = "ipc_shm",
-                }
+                ipc_shm = "ipc_shm",
             }))
 
             local ok, err = pcall(cache.delete, cache, 123)
@@ -78,10 +75,7 @@ key must be a string
             local mlcache = require "resty.mlcache"
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
-                ipc = {
-                    type = "mlcache_ipc",
-                    shm = "ipc_shm",
-                }
+                ipc_shm = "ipc_shm",
             }))
 
             local value = 123
@@ -151,7 +145,6 @@ from callback: 456
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
                 ipc = {
-                    type = "custom",
                     register_listeners = function() end,
                     broadcast = function(channel, data, ...)
                         ngx.say("channel: ", channel)

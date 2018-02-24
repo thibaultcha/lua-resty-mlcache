@@ -56,7 +56,7 @@ __DATA__
 --- request
 GET /t
 --- response_body
-no ipc to poll updates, specify opts.ipc
+no polling configured, specify opts.ipc_shm or opts.ipc.poll
 --- no_error_log
 [error]
 
@@ -71,7 +71,6 @@ no ipc to poll updates, specify opts.ipc
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
                 ipc = {
-                    type = "custom",
                     register_listeners = function() end,
                     broadcast = function() end,
                     poll = function(...)
@@ -101,10 +100,7 @@ called poll() with args: 3.5
             local mlcache = require "resty.mlcache"
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
-                ipc = {
-                    type = "mlcache_ipc",
-                    shm = "ipc_shm",
-                }
+                ipc_shm = "ipc_shm",
             }))
 
             for i = 1, 10e3 do
@@ -118,4 +114,4 @@ GET /t
 --- no_error_log
 [error]
 --- error_log eval
-qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):11 loop\]/
+qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):8 loop\]/
