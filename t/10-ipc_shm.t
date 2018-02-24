@@ -41,7 +41,7 @@ run_tests();
 
 __DATA__
 
-=== TEST 1: update() with mlcache_ipc catches up with invalidation events
+=== TEST 1: update() with ipc_shm catches up with invalidation events
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -49,11 +49,8 @@ __DATA__
             local mlcache = require "resty.mlcache"
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
-                ipc = {
-                    type = "mlcache_ipc",
-                    shm = "ipc_shm",
-                    debug = true -- allows same worker to receive its own published events
-                }
+                ipc_shm = "ipc_shm",
+                debug = true -- allows same worker to receive its own published events
             }))
 
             cache.ipc:subscribe(cache.events.invalidation.channel, function(data)
@@ -74,7 +71,7 @@ received event from invalidations: my_key
 
 
 
-=== TEST 2: update() with mlcache_ipc timeouts when waiting for too long
+=== TEST 2: update() with ipc_shm timeouts when waiting for too long
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -82,11 +79,8 @@ received event from invalidations: my_key
             local mlcache = require "resty.mlcache"
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
-                ipc = {
-                    type = "mlcache_ipc",
-                    shm = "ipc_shm",
-                    debug = true -- allows same worker to receive its own published events
-                }
+                ipc_shm = "ipc_shm",
+                debug = true -- allows same worker to receive its own published events
             }))
 
             cache.ipc:subscribe(cache.events.invalidation.channel, function(data)
@@ -115,18 +109,15 @@ received event from invalidations: my_key
 
 
 
-=== TEST 3: update() with mlcache_ipc JITs when no events to catch up
+=== TEST 3: update() with ipc_shm JITs when no events to catch up
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
-                ipc = {
-                    type = "mlcache_ipc",
-                    shm = "ipc_shm",
-                    debug = true -- allows same worker to receive its own published events
-                }
+                ipc_shm = "ipc_shm",
+                debug = true -- allows same worker to receive its own published events
             }))
             for i = 1, 10e3 do
                 assert(cache:update())
@@ -139,11 +130,11 @@ GET /t
 --- no_error_log
 [error]
 --- error_log eval
-qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
+qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):7 loop\]/
 
 
 
-=== TEST 4: set() with mlcache_ipc invalidates other workers' LRU cache
+=== TEST 4: set() with ipc_shm invalidates other workers' LRU cache
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -151,11 +142,8 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
             local mlcache = require "resty.mlcache"
 
             local opts = {
-                ipc = {
-                    type = "mlcache_ipc",
-                    shm = "ipc_shm",
-                    debug = true -- allows same worker to receive its own published events
-                }
+                ipc_shm = "ipc_shm",
+                debug = true -- allows same worker to receive its own published events
             }
 
             local cache = assert(mlcache.new("namespace", "cache_shm", opts))
@@ -190,7 +178,7 @@ called lru:delete() with key: my_key
 
 
 
-=== TEST 5: delete() with mlcache_ipc invalidates other workers' LRU cache
+=== TEST 5: delete() with ipc_shm invalidates other workers' LRU cache
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -198,11 +186,8 @@ called lru:delete() with key: my_key
             local mlcache = require "resty.mlcache"
 
             local opts = {
-                ipc = {
-                    type = "mlcache_ipc",
-                    shm = "ipc_shm",
-                    debug = true -- allows same worker to receive its own published events
-                }
+                ipc_shm = "ipc_shm",
+                debug = true -- allows same worker to receive its own published events
             }
 
             local cache = assert(mlcache.new("namespace", "cache_shm", opts))
@@ -246,11 +231,8 @@ called lru:delete() with key: my_key
             local mlcache = require "resty.mlcache"
 
             local opts = {
-                ipc = {
-                    type = "mlcache_ipc",
-                    shm = "ipc_shm",
-                    debug = true -- allows same worker to receive its own published events
-                }
+                ipc_shm = "ipc_shm",
+                debug = true -- allows same worker to receive its own published events
             }
 
             local cache = assert(mlcache.new("namespace", "cache_shm", opts))

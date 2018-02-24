@@ -222,52 +222,29 @@ function _M.new(name, shm, opts)
         end
 
         if opts.ipc_shm ~= nil and type(opts.ipc_shm) ~= "string" then
-            -- Support for deprecated `ipc_shm` option.
-            -- TODO: eventually remove.
             error("opts.ipc_shm must be a string", 2)
         end
 
         if opts.ipc ~= nil then
+            if opts.ipc_shm then
+                error("cannot specify both of opts.ipc_shm and opts.ipc", 2)
+            end
+
             if type(opts.ipc) ~= "table" then
                 error("opts.ipc must be a table", 2)
             end
 
-            if opts.ipc.type ~= "mlcache_ipc"
-                and opts.ipc.type ~= "custom"
-            then
-                error("opts.ipc.type must be one of 'mlcache_ipc' or 'custom'",
-                      2)
+            if type(opts.ipc.register_listeners) ~= "function" then
+                error("opts.ipc.register_listeners must be a function", 2)
             end
 
-            if opts.ipc.type == "mlcache_ipc"
-                and type(opts.ipc.shm) ~= "string"
-            then
-                error("opts.ipc.shm must be a string", 2)
-
-            elseif opts.ipc.type == "custom" then
-                if type(opts.ipc.register_listeners) ~= "function" then
-                    error("opts.ipc.register_listeners must be a function", 2)
-                end
-
-                if type(opts.ipc.broadcast) ~= "function" then
-                    error("opts.ipc.broadcast must be a function", 2)
-                end
-
-                if type(opts.ipc.poll) ~= "function" then
-                    error("opts.ipc.poll must be a function", 2)
-                end
+            if type(opts.ipc.broadcast) ~= "function" then
+                error("opts.ipc.broadcast must be a function", 2)
             end
 
-        elseif opts.ipc_shm then
-            -- Support for deprecated `ipc_shm` option.
-            -- TODO: eventually remove.
-            ngx.log(ngx.WARN, "[lua-resty-mlcache] the 'opts.ipc_shm' option ",
-                              "is deprecated, use 'opts.ipc' instead")
-
-            opts.ipc = {
-                type = "mlcache_ipc",
-                shm = opts.ipc_shm,
-            }
+            if opts.ipc.poll ~= nil and type(opts.ipc.poll) ~= "function" then
+                error("opts.ipc.poll must be a function", 2)
+            end
         end
 
         if opts.l1_serializer ~= nil
@@ -295,7 +272,7 @@ function _M.new(name, shm, opts)
         l1_serializer   = opts.l1_serializer,
     }
 
-    if opts.ipc then
+    if opts.ipc_shm or opts.ipc then
         self.events = {
             ["invalidation"] = {
                 channel = fmt("mlcache:invalidations:%s", name),
@@ -311,10 +288,10 @@ function _M.new(name, shm, opts)
             }
         }
 
-        if opts.ipc.type == "mlcache_ipc" then
+        if opts.ipc_shm then
             local mlcache_ipc = require "resty.mlcache.ipc"
 
-            local ipc, err = mlcache_ipc.new(opts.ipc.shm, opts.ipc.debug)
+            local ipc, err = mlcache_ipc.new(opts.ipc_shm, opts.debug)
             if not ipc then
                 return nil, "failed to initialize mlcache IPC " ..
                             "(could not instantiate mlcache.ipc): " .. err
@@ -334,7 +311,8 @@ function _M.new(name, shm, opts)
 
             self.ipc = ipc
 
-        elseif opts.ipc.type == "custom" then
+        else
+            -- opts.ipc
             local ok, err = opts.ipc.register_listeners(self.events)
             if not ok and err ~= nil then
                 return nil, "failed to initialize custom IPC " ..
@@ -703,8 +681,8 @@ end
 
 
 function _M:set(key, opts, value)
-    if not self.ipc then
-        error("no ipc to propagate update, specify opts.ipc", 2)
+    if not self.broadcast then
+        error("no ipc to propagate update, specify opts.ipc_shm or opts.ipc", 2)
     end
 
     if type(key) ~= "string" then
@@ -736,8 +714,9 @@ end
 
 
 function _M:delete(key)
-    if not self.ipc then
-        error("no ipc to propagate deletion, specify opts.ipc", 2)
+    if not self.broadcast then
+        error("no ipc to propagate deletion, specify opts.ipc_shm or opts.ipc",
+              2)
     end
 
     if type(key) ~= "string" then
@@ -770,8 +749,8 @@ end
 
 
 function _M:purge(flush_expired)
-    if not self.ipc then
-        error("no ipc to propagate purge, specify opts.ipc", 2)
+    if not self.broadcast then
+        error("no ipc to propagate purge, specify opts.ipc_shm or opts.ipc", 2)
     end
 
     -- clear shm first
@@ -794,8 +773,8 @@ end
 
 
 function _M:update(timeout)
-    if not self.ipc then
-        error("no ipc to poll updates, specify opts.ipc", 2)
+    if not self.poll then
+        error("no polling configured, specify opts.ipc_shm or opts.ipc.poll", 2)
     end
 
     local ok, err = self.poll(timeout)

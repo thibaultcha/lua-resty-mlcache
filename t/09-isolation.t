@@ -175,16 +175,10 @@ cache_2 shm has: value B
             -- create 2 mlcache
 
             local cache_1 = assert(mlcache.new("my_mlcache_1", "cache_shm", {
-                ipc = {
-                    type = "mlcache_ipc",
-                    shm = "ipc_shm",
-                }
+                ipc_shm = "ipc_shm",
             }))
             local cache_2 = assert(mlcache.new("my_mlcache_2", "cache_shm", {
-                ipc = {
-                    type = "mlcache_ipc",
-                    shm = "ipc_shm",
-                }
+                ipc_shm = "ipc_shm",
             }))
 
             -- set 2 values in both mlcaches
@@ -250,16 +244,10 @@ cache_2 lru has: value B
             -- create 2 mlcaches
 
             local cache_1 = assert(mlcache.new("my_mlcache_1", "cache_shm", {
-                ipc = {
-                    type = "mlcache_ipc",
-                    shm = "ipc_shm",
-                }
+                ipc_shm = "ipc_shm",
             }))
             local cache_2 = assert(mlcache.new("my_mlcache_2", "cache_shm", {
-                ipc = {
-                    type = "mlcache_ipc",
-                    shm = "ipc_shm",
-                }
+                ipc_shm = "ipc_shm",
             }))
 
             -- reset LRUs so repeated tests allow the below get() to set the
@@ -311,7 +299,6 @@ cache_2 value: value B
 
             local cache_1 = assert(mlcache.new("my_mlcache_1", "cache_shm", {
                 ipc = {
-                    type = "custom",
                     register_listeners = function() end,
                     broadcast = function(channel)
                         ngx.say("cache_1 channel: ", channel)
@@ -322,7 +309,6 @@ cache_2 value: value B
             }))
             local cache_2 = assert(mlcache.new("my_mlcache_2", "cache_shm", {
                 ipc = {
-                    type = "custom",
                     register_listeners = function() end,
                     broadcast = function(channel)
                         ngx.say("cache_2 channel: ", channel)
@@ -357,7 +343,6 @@ cache_2 channel: mlcache:invalidations:my_mlcache_2
 
             local cache_1 = assert(mlcache.new("my_mlcache_1", "cache_shm", {
                 ipc = {
-                    type = "custom",
                     register_listeners = function() end,
                     broadcast = function(channel)
                         ngx.say("cache_1 channel: ", channel)
@@ -368,7 +353,6 @@ cache_2 channel: mlcache:invalidations:my_mlcache_2
             }))
             local cache_2 = assert(mlcache.new("my_mlcache_2", "cache_shm", {
                 ipc = {
-                    type = "custom",
                     register_listeners = function() end,
                     broadcast = function(channel)
                         ngx.say("cache_2 channel: ", channel)

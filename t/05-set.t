@@ -35,7 +35,7 @@ __DATA__
 --- request
 GET /t
 --- response_body
-no ipc to propagate update, specify opts.ipc
+no ipc to propagate update, specify opts.ipc_shm or opts.ipc
 --- no_error_log
 [error]
 
@@ -49,10 +49,7 @@ no ipc to propagate update, specify opts.ipc
             local mlcache = require "resty.mlcache"
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
-                ipc = {
-                    type = "mlcache_ipc",
-                    shm = "ipc_shm",
-                }
+                ipc_shm = "ipc_shm",
             }))
 
             local ok, err = pcall(cache.set, cache)
@@ -78,10 +75,7 @@ key must be a string
             local mlcache = require "resty.mlcache"
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
-                ipc = {
-                    type = "mlcache_ipc",
-                    shm = "ipc_shm",
-                }
+                ipc_shm = "ipc_shm",
             }))
 
             -- setting a value in shm
@@ -125,10 +119,7 @@ cache lru value after get(): 123
             local mlcache = require "resty.mlcache"
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
-                ipc = {
-                    type = "mlcache_ipc",
-                    shm = "ipc_shm",
-                }
+                ipc_shm = "ipc_shm",
             }))
 
             -- setting a value in shm
@@ -159,10 +150,7 @@ cache lru value after set(): 123
             local mlcache = require "resty.mlcache"
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
-                ipc = {
-                    type = "mlcache_ipc",
-                    shm = "ipc_shm",
-                }
+                ipc_shm = "ipc_shm",
             }))
 
             -- setting a non-nil value in shm
@@ -221,10 +209,7 @@ value from get(): 123
             local mlcache = require "resty.mlcache"
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
-                ipc = {
-                    type = "mlcache_ipc",
-                    shm = "ipc_shm",
-                }
+                ipc_shm = "ipc_shm",
             }))
 
             -- setting a nil value in shm
@@ -290,7 +275,6 @@ value from get(): nil
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
                 ipc = {
-                    type = "custom",
                     register_listeners = function() end,
                     broadcast = function(channel, data, ...)
                         ngx.say("channel: ", channel)
