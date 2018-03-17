@@ -232,6 +232,13 @@ holding the desired options for this instance. The possible options are:
   cache.  It can thus avoid your application from having to repeat such
   transformation upon every cache hit, such as creating tables, cdata objects,
   functions, etc...
+- `shm_set_tries`: the number of tries for the lua_shared_dict `set()`
+  operation. When the lua_shared_dict is full, it attempts to free up to 30
+  items from its queue. When the value being set is much larger than the freed
+  space, this option allows mlcache to retry the operation (and free more slots)
+  until the maximum number of tries is reached or enough memory was freed for
+  the value to fit.
+  **Default**: `3`.
 - `ipc_shm`: _optional_ string. If you wish to use [set()](#set),
   [delete()](#delete), or [purge()](#purge), you must provide an IPC
   (Inter-process communication) mechanism for workers to invalidate their L1
