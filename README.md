@@ -75,6 +75,7 @@ The cache level hierarchy is:
     - [delete](#delete)
     - [purge](#purge)
     - [update](#update)
+- [Changelog](#changelog)
 - [License](#license)
 
 # Synopsis
@@ -769,6 +770,12 @@ this library, if an IPC library can avoid the polling approach, so will this
 library. `update()` is only a necessary evil due to today's Nginx/OpenResty
 "limitations". You can however use your own IPC library by use of the
 `opts.ipc` option when instantiating your mlcache.
+
+[Back to TOC](#table-of-contents)
+
+# Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
 
 [Back to TOC](#table-of-contents)
 
