@@ -472,27 +472,37 @@ opts.resty_lock_opts must be a table
 
 
 
-=== TEST 18: new() validates opts.quiet
+=== TEST 18: new() validates opts.shm_set_tries
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local ok, err = pcall(mlcache.new, "name", "cache_shm", {
-                quiet = 123,
-            })
-            if not ok then
-                ngx.log(ngx.ERR, err)
+            local values = {
+                false,
+                -1,
+                0,
+            }
+
+            for _, v in ipairs(values) do
+                local ok, err = pcall(mlcache.new, "name", "cache_shm", {
+                    shm_set_tries = v,
+                })
+                if not ok then
+                    ngx.say(err)
+                end
             end
         }
     }
 --- request
 GET /t
 --- response_body
-
---- error_log
-opts.quiet must be a boolean
+opts.shm_set_tries must be a number
+opts.shm_set_tries must be >= 1
+opts.shm_set_tries must be >= 1
+--- no_error_log
+[error]
 
 
 

@@ -7,7 +7,7 @@ workers(2);
 
 #repeat_each(2);
 
-plan tests => repeat_each() * (blocks() * 3) + 7;
+plan tests => repeat_each() * (blocks() * 3) + 9;
 
 my $pwd = cwd();
 
@@ -1677,7 +1677,7 @@ was given 'opts.resty_lock_opts': true
                 idx = idx + 1
             end
 
-            -- now, trigger a hit with a value several times as large
+            -- now, trigger a hit with a value many times as large
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
 
@@ -1697,18 +1697,60 @@ GET /t
 --- response_body
 data type: string
 --- error_log eval
-qr/\[warn\] .*? could not write to lua_shared_dict 'cache_shm' \(no memory\), it is either/
+qr/\[warn\] .*? could not write to lua_shared_dict 'cache_shm' after 3 tries \(no memory\), it is either/
 --- no_error_log
 [error]
 
 
 
-=== TEST 38: get() caches data in L1 LRU even if failed to set in shm
+=== TEST 38: get() errors on invalid opts.shm_set_tries
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache, err = mlcache.new("my_mlcache", "cache_shm")
+            if not cache then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            local values = {
+                "foo",
+                -1,
+                0,
+            }
+
+            for _, v in ipairs(values) do
+                local ok, err = pcall(cache.get, cache, "key", {
+                    shm_set_tries = v
+                }, function() end)
+                if not ok then
+                    ngx.say(err)
+                end
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body
+opts.shm_set_tries must be a number
+opts.shm_set_tries must be >= 1
+opts.shm_set_tries must be >= 1
+--- no_error_log
+[error]
+
+
+
+=== TEST 39: get() with default shm_set_tries to LRU evict items when a large value is being cached
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
         content_by_lua_block {
             local dict = ngx.shared.cache_shm
+            dict:flush_all()
+            dict:flush_expired()
             local mlcache = require "resty.mlcache"
 
             -- fill up shm
@@ -1716,7 +1758,7 @@ qr/\[warn\] .*? could not write to lua_shared_dict 'cache_shm' \(no memory\), it
             local idx = 0
 
             while true do
-                local ok, err, forcible = dict:set(idx, string.rep("a", 2^5))
+                local ok, err, forcible = dict:set(idx, string.rep("a", 2^2))
                 if not ok then
                     ngx.log(ngx.ERR, err)
                     return
@@ -1729,11 +1771,228 @@ qr/\[warn\] .*? could not write to lua_shared_dict 'cache_shm' \(no memory\), it
                 idx = idx + 1
             end
 
-            -- now, trigger a hit with a value several times as large
+            -- shm:set() will evict up to 30 items when the shm is full
+            -- now, trigger a hit with a larger value which should trigger LRU
+            -- eviction and force the slab allocator to free pages
+
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
+
+            local cb_calls = 0
+            local function cb()
+                cb_calls = cb_calls + 1
+                return string.rep("a", 2^5)
+            end
+
+            local data, err = cache:get("key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            -- from shm
+
+            cache.lru:delete("key")
+
+            local data, err = cache:get("key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("type of data in shm: ", type(data))
+            ngx.say("callback was called: ", cb_calls, " times")
+        }
+    }
+--- request
+GET /t
+--- response_body
+type of data in shm: string
+callback was called: 1 times
+--- no_error_log
+[warn]
+[error]
+
+
+
+=== TEST 40: get() respects instance opts.shm_set_tries to LRU evict items when a large value is being cached
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local dict = ngx.shared.cache_shm
+            dict:flush_all()
+            dict:flush_expired()
+            local mlcache = require "resty.mlcache"
+
+            -- fill up shm
+
+            local idx = 0
+
+            while true do
+                local ok, err, forcible = dict:set(idx, string.rep("a", 2^2))
+                if not ok then
+                    ngx.log(ngx.ERR, err)
+                    return
+                end
+
+                if forcible then
+                    break
+                end
+
+                idx = idx + 1
+            end
+
+            -- shm:set() will evict up to 30 items when the shm is full
+            -- now, trigger a hit with a larger value which should trigger LRU
+            -- eviction and force the slab allocator to free pages
+
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
+                shm_set_tries = 5
+            }))
+
+            local cb_calls = 0
+            local function cb()
+                cb_calls = cb_calls + 1
+                return string.rep("a", 2^12)
+            end
+
+            local data, err = cache:get("key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            -- from shm
+
+            cache.lru:delete("key")
+
+            local data, err = cache:get("key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("type of data in shm: ", type(data))
+            ngx.say("callback was called: ", cb_calls, " times")
+        }
+    }
+--- request
+GET /t
+--- response_body
+type of data in shm: string
+callback was called: 1 times
+--- no_error_log
+[warn]
+[error]
+
+
+
+=== TEST 41: get() accepts opts.shm_set_tries to LRU evict items when a large value is being cached
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local dict = ngx.shared.cache_shm
+            dict:flush_all()
+            dict:flush_expired()
+            local mlcache = require "resty.mlcache"
+
+            -- fill up shm
+
+            local idx = 0
+
+            while true do
+                local ok, err, forcible = dict:set(idx, string.rep("a", 2^2))
+                if not ok then
+                    ngx.log(ngx.ERR, err)
+                    return
+                end
+
+                if forcible then
+                    break
+                end
+
+                idx = idx + 1
+            end
+
+            -- now, trigger a hit with a value ~3 times as large
+            -- which should trigger retries and eventually remove 9 other
+            -- cached items
+
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
+
+            local cb_calls = 0
+            local function cb()
+                cb_calls = cb_calls + 1
+                return string.rep("a", 2^12)
+            end
+
+            local data, err = cache:get("key", {
+                shm_set_tries = 5
+            }, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            -- from shm
+
+            cache.lru:delete("key")
+
+            local data, err = cache:get("key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("type of data in shm: ", type(data))
+            ngx.say("callback was called: ", cb_calls, " times")
+        }
+    }
+--- request
+GET /t
+--- response_body
+type of data in shm: string
+callback was called: 1 times
+--- no_error_log
+[warn]
+[error]
+
+
+
+=== TEST 42: get() caches data in L1 LRU even if failed to set in shm
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local dict = ngx.shared.cache_shm
+            dict:flush_all()
+            dict:flush_expired()
+            local mlcache = require "resty.mlcache"
+
+            -- fill up shm
+
+            local idx = 0
+
+            while true do
+                local ok, err, forcible = dict:set(idx, string.rep("a", 2^2))
+                if not ok then
+                    ngx.log(ngx.ERR, err)
+                    return
+                end
+
+                if forcible then
+                    break
+                end
+
+                idx = idx + 1
+            end
+
+            -- now, trigger a hit with a value many times as large
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
                 ttl = 0.3,
-                quiet = true,
+                shm_set_tries = 1,
             }))
 
             local data, err = cache:get("key", nil, function()
@@ -1761,57 +2020,4 @@ type of data in LRU: string
 sleeping...
 is stale: true
 --- no_error_log
-[error]
-
-
-
-=== TEST 39: get() + opts.quiet does not log 'no memory' warning
---- http_config eval: $::HttpConfig
---- config
-    location = /t {
-        content_by_lua_block {
-            local dict = ngx.shared.cache_shm
-            local mlcache = require "resty.mlcache"
-
-            -- fill up shm
-
-            local idx = 0
-
-            while true do
-                local ok, err, forcible = dict:set(idx, string.rep("a", 2^5))
-                if not ok then
-                    ngx.log(ngx.ERR, err)
-                    return
-                end
-
-                if forcible then
-                    break
-                end
-
-                idx = idx + 1
-            end
-
-            -- now, trigger a hit with a value several times as large
-
-            local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
-                quiet = true,
-            }))
-
-            local data, err = cache:get("key", nil, function()
-                return string.rep("a", 2^20)
-            end)
-            if err then
-                ngx.log(ngx.ERR, err)
-                return
-            end
-
-            ngx.say("data type: ", type(data))
-        }
-    }
---- request
-GET /t
---- response_body
-data type: string
---- no_error_log
-[warn]
 [error]

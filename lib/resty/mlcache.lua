@@ -24,6 +24,7 @@ local WARN         = ngx.WARN
 local LOCK_KEY_PREFIX         = "lua-resty-mlcache:lock:"
 local CACHE_MISS_SENTINEL_LRU = {}
 local LRU_INSTANCES           = {}
+local SHM_SET_DEFAULT_TRIES   = 3
 
 
 local c_str_type    = ffi.typeof("char *")
@@ -255,8 +256,14 @@ function _M.new(name, shm, opts)
             error("opts.l1_serializer must be a function", 2)
         end
 
-        if opts.quiet ~= nil and type(opts.quiet) ~= "boolean" then
-            error("opts.quiet must be a boolean", 2)
+        if opts.shm_set_tries ~= nil then
+            if type(opts.shm_set_tries) ~= "number" then
+                error("opts.shm_set_tries must be a number", 2)
+            end
+
+            if opts.shm_set_tries < 1 then
+                error("opts.shm_set_tries must be >= 1", 2)
+            end
         end
     else
         opts = {}
@@ -276,7 +283,7 @@ function _M.new(name, shm, opts)
         lru_size        = opts.lru_size or 100,
         resty_lock_opts = opts.resty_lock_opts,
         l1_serializer   = opts.l1_serializer,
-        quiet           = opts.quiet,
+        shm_set_tries   = opts.shm_set_tries or SHM_SET_DEFAULT_TRIES,
     }
 
     if opts.ipc_shm or opts.ipc then
@@ -384,7 +391,42 @@ local function set_lru(self, key, value, ttl, neg_ttl, l1_serializer)
 end
 
 
-local function set_shm(self, shm_key, value, ttl, neg_ttl)
+local function shm_set_retries(self, key, val, ttl, max_tries)
+    -- we will call `set()` N times to work around potential shm fragmentation.
+    -- when the shm is full, it will only evict about 30 to 90 items (via
+    -- LRU), which could lead to a situation where `set()` still does not
+    -- have enough memory to store the cached value, in which case we
+    -- try again to try to trigger more LRU evictions.
+
+    local tries = 0
+    local ok, err
+
+    while tries < max_tries do
+        tries = tries + 1
+
+        ok, err = self.dict:set(key, val, ttl)
+        if ok or err and err ~= "no memory" then
+            break
+        end
+    end
+
+    if not ok then
+        if err ~= "no memory" then
+            return nil, "could not write to lua_shared_dict '" .. self.shm
+                        .. "': " .. err
+        end
+
+        ngx_log(WARN, "could not write to lua_shared_dict '",
+                      self.shm, "' after ", tries, " tries (no memory), ",
+                      "it is either fragmented or cannot allocate more ",
+                      "memory, consider increasing 'opts.shm_set_tries'")
+    end
+
+    return true
+end
+
+
+local function set_shm(self, shm_key, value, ttl, neg_ttl, shm_set_tries)
     local at = now()
 
     if value == nil then
@@ -392,18 +434,10 @@ local function set_shm(self, shm_key, value, ttl, neg_ttl)
 
         -- we need to cache that this was a miss, and ensure cache hit for a
         -- nil value
-        local ok, err = self.dict:set(shm_key, shm_nil, neg_ttl)
+        local ok, err = shm_set_retries(self, shm_key, shm_nil, neg_ttl,
+                                        shm_set_tries)
         if not ok then
-            if err ~= "no memory" then
-                return nil, "could not write to lua_shared_dict '" .. self.shm
-                            .. "': " .. err
-            end
-
-            if not self.quiet then
-                ngx_log(WARN, "could not write to lua_shared_dict '",
-                              self.shm, "' (no memory), it is either ",
-                              "fragmented or cannot allocate more memory")
-            end
+            return nil, err
         end
 
         return true
@@ -428,18 +462,10 @@ local function set_shm(self, shm_key, value, ttl, neg_ttl)
 
     -- cache value in shm for currently-locked workers
 
-    local ok, err = self.dict:set(shm_key, shm_marshalled, ttl)
+    local ok, err = shm_set_retries(self, shm_key, shm_marshalled, ttl,
+                                    shm_set_tries)
     if not ok then
-        if err ~= "no memory" then
-            return nil, "could not write to lua_shared_dict '" .. self.shm
-                        .. "': " .. err
-        end
-
-        if not self.quiet then
-            ngx_log(WARN, "could not write to lua_shared_dict '",
-                          self.shm, "' (no memory), it is either ",
-                          "fragmented or cannot allocate more memory")
-        end
+        return nil, err
     end
 
     return true
@@ -487,6 +513,7 @@ local function check_opts(self, opts)
     local ttl
     local neg_ttl
     local l1_serializer
+    local shm_set_tries
 
     if opts ~= nil then
         if type(opts) ~= "table" then
@@ -519,6 +546,17 @@ local function check_opts(self, opts)
         if l1_serializer ~= nil and type(l1_serializer) ~= "function" then
            error("opts.l1_serializer must be a function", 3)
         end
+
+        shm_set_tries = opts.shm_set_tries
+        if shm_set_tries ~= nil then
+            if type(shm_set_tries) ~= "number" then
+                error("opts.shm_set_tries must be a number", 3)
+            end
+
+            if shm_set_tries < 1 then
+                error("opts.shm_set_tries must be >= 1", 3)
+            end
+        end
     end
 
     if not ttl then
@@ -533,7 +571,11 @@ local function check_opts(self, opts)
         l1_serializer = self.l1_serializer
     end
 
-    return ttl, neg_ttl, l1_serializer
+    if not shm_set_tries then
+        shm_set_tries = self.shm_set_tries
+    end
+
+    return ttl, neg_ttl, l1_serializer, shm_set_tries
 end
 
 
@@ -576,7 +618,7 @@ function _M:get(key, opts, cb, ...)
 
     -- opts validation
 
-    local ttl, neg_ttl, l1_serializer = check_opts(self, opts)
+    local ttl, neg_ttl, l1_serializer, shm_set_tries = check_opts(self, opts)
 
     local err
     data, err = get_shm_set_lru(self, key, namespaced_key, l1_serializer)
@@ -647,7 +689,8 @@ function _M:get(key, opts, cb, ...)
 
     -- set shm cache level
 
-    local ok, err = set_shm(self, namespaced_key, data, ttl, neg_ttl)
+    local ok, err = set_shm(self, namespaced_key, data, ttl, neg_ttl,
+                            shm_set_tries)
     if not ok then
         return unlock_and_ret(lock, nil, err)
     end
@@ -718,12 +761,14 @@ function _M:set(key, opts, value)
         -- restrict this key to the current namespace, so we isolate this
         -- mlcache instance from potential other instances using the same
         -- shm
-        local ttl, neg_ttl, l1_serializer = check_opts(self, opts)
+        local ttl, neg_ttl, l1_serializer, shm_set_tries = check_opts(self,
+                                                                      opts)
         local namespaced_key = self.name .. key
 
         set_lru(self, key, value, ttl, neg_ttl, l1_serializer)
 
-        local ok, err = set_shm(self, namespaced_key, value, ttl, neg_ttl)
+        local ok, err = set_shm(self, namespaced_key, value, ttl, neg_ttl,
+                                shm_set_tries)
         if not ok then
             return nil, err
         end
