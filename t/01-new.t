@@ -472,7 +472,31 @@ opts.resty_lock_opts must be a table
 
 
 
-=== TEST 18: new() creates an mlcache object with default attributes
+=== TEST 18: new() validates opts.quiet
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local ok, err = pcall(mlcache.new, "name", "cache_shm", {
+                quiet = 123,
+            })
+            if not ok then
+                ngx.log(ngx.ERR, err)
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body
+
+--- error_log
+opts.quiet must be a boolean
+
+
+
+=== TEST 19: new() creates an mlcache object with default attributes
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -500,7 +524,7 @@ number
 
 
 
-=== TEST 19: new() accepts user-provided LRU instances via opts.lru
+=== TEST 20: new() accepts user-provided LRU instances via opts.lru
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {

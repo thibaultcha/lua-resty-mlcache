@@ -13,10 +13,12 @@ local find         = string.find
 local type         = type
 local pcall        = pcall
 local error        = error
-local shared       = ngx.shared
 local tostring     = tostring
 local tonumber     = tonumber
 local setmetatable = setmetatable
+local shared       = ngx.shared
+local ngx_log      = ngx.log
+local WARN         = ngx.WARN
 
 
 local LOCK_KEY_PREFIX         = "lua-resty-mlcache:lock:"
@@ -252,6 +254,10 @@ function _M.new(name, shm, opts)
         then
             error("opts.l1_serializer must be a function", 2)
         end
+
+        if opts.quiet ~= nil and type(opts.quiet) ~= "boolean" then
+            error("opts.quiet must be a boolean", 2)
+        end
     else
         opts = {}
     end
@@ -270,6 +276,7 @@ function _M.new(name, shm, opts)
         lru_size        = opts.lru_size or 100,
         resty_lock_opts = opts.resty_lock_opts,
         l1_serializer   = opts.l1_serializer,
+        quiet           = opts.quiet,
     }
 
     if opts.ipc_shm or opts.ipc then
@@ -387,7 +394,16 @@ local function set_shm(self, shm_key, value, ttl, neg_ttl)
         -- nil value
         local ok, err = self.dict:set(shm_key, shm_nil, neg_ttl)
         if not ok then
-            return nil, "could not write to lua_shared_dict: " .. err
+            if err ~= "no memory" then
+                return nil, "could not write to lua_shared_dict '" .. self.shm
+                            .. "': " .. err
+            end
+
+            if not self.quiet then
+                ngx_log(WARN, "could not write to lua_shared_dict '",
+                              self.shm, "' (no memory), it is either ",
+                              "fragmented or cannot allocate more memory")
+            end
         end
 
         return true
@@ -414,7 +430,16 @@ local function set_shm(self, shm_key, value, ttl, neg_ttl)
 
     local ok, err = self.dict:set(shm_key, shm_marshalled, ttl)
     if not ok then
-        return nil, "could not write to lua_shared_dict: " .. err
+        if err ~= "no memory" then
+            return nil, "could not write to lua_shared_dict '" .. self.shm
+                        .. "': " .. err
+        end
+
+        if not self.quiet then
+            ngx_log(WARN, "could not write to lua_shared_dict '",
+                          self.shm, "' (no memory), it is either ",
+                          "fragmented or cannot allocate more memory")
+        end
     end
 
     return true

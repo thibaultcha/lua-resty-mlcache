@@ -7,7 +7,7 @@ workers(2);
 
 #repeat_each(2);
 
-plan tests => repeat_each() * (blocks() * 3) + 5;
+plan tests => repeat_each() * (blocks() * 3) + 7;
 
 my $pwd = cwd();
 
@@ -1647,4 +1647,171 @@ GET /t
 --- response_body
 was given 'opts.resty_lock_opts': true
 --- no_error_log
+[error]
+
+
+
+=== TEST 37: get() returns data even if failed to set in shm
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local dict = ngx.shared.cache_shm
+            local mlcache = require "resty.mlcache"
+
+            -- fill up shm
+
+            local idx = 0
+
+            while true do
+                local ok, err, forcible = dict:set(idx, string.rep("a", 2^5))
+                if not ok then
+                    ngx.log(ngx.ERR, err)
+                    return
+                end
+
+                if forcible then
+                    break
+                end
+
+                idx = idx + 1
+            end
+
+            -- now, trigger a hit with a value several times as large
+
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
+
+            local data, err = cache:get("key", nil, function()
+                return string.rep("a", 2^20)
+            end)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("data type: ", type(data))
+        }
+    }
+--- request
+GET /t
+--- response_body
+data type: string
+--- error_log eval
+qr/\[warn\] .*? could not write to lua_shared_dict 'cache_shm' \(no memory\), it is either/
+--- no_error_log
+[error]
+
+
+
+=== TEST 38: get() caches data in L1 LRU even if failed to set in shm
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local dict = ngx.shared.cache_shm
+            local mlcache = require "resty.mlcache"
+
+            -- fill up shm
+
+            local idx = 0
+
+            while true do
+                local ok, err, forcible = dict:set(idx, string.rep("a", 2^5))
+                if not ok then
+                    ngx.log(ngx.ERR, err)
+                    return
+                end
+
+                if forcible then
+                    break
+                end
+
+                idx = idx + 1
+            end
+
+            -- now, trigger a hit with a value several times as large
+
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
+                ttl = 0.3,
+                quiet = true,
+            }))
+
+            local data, err = cache:get("key", nil, function()
+                return string.rep("a", 2^20)
+            end)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            local data = cache.lru:get("key")
+            ngx.say("type of data in LRU: ", type(data))
+
+            ngx.say("sleeping...")
+            ngx.sleep(0.4)
+
+            local _, stale = cache.lru:get("key")
+            ngx.say("is stale: ", stale ~= nil)
+        }
+    }
+--- request
+GET /t
+--- response_body
+type of data in LRU: string
+sleeping...
+is stale: true
+--- no_error_log
+[error]
+
+
+
+=== TEST 39: get() + opts.quiet does not log 'no memory' warning
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local dict = ngx.shared.cache_shm
+            local mlcache = require "resty.mlcache"
+
+            -- fill up shm
+
+            local idx = 0
+
+            while true do
+                local ok, err, forcible = dict:set(idx, string.rep("a", 2^5))
+                if not ok then
+                    ngx.log(ngx.ERR, err)
+                    return
+                end
+
+                if forcible then
+                    break
+                end
+
+                idx = idx + 1
+            end
+
+            -- now, trigger a hit with a value several times as large
+
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
+                quiet = true,
+            }))
+
+            local data, err = cache:get("key", nil, function()
+                return string.rep("a", 2^20)
+            end)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("data type: ", type(data))
+        }
+    }
+--- request
+GET /t
+--- response_body
+data type: string
+--- no_error_log
+[warn]
 [error]
