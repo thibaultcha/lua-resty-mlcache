@@ -220,9 +220,22 @@ holding the desired options for this instance. The possible options are:
 - `lru`: a lua-resty-lrucache instance of your choice. If specified, mlcache
   will not instantiate an LRU. One can use this value to use the
   `resty.lrucache.pureffi` implementation of lua-resty-lrucache if desired.
-- `resty_lock_opts`: options for [lua-resty-lock] instances. When mlcache
-  runs the L3 callback, it uses lua-resty-lock to ensure that a single
-  worker runs the provided callback.
+- `shm_set_tries`: the number of tries for the lua_shared_dict `set()`
+  operation. When the lua_shared_dict is full, it attempts to free up to 30
+  items from its queue. When the value being set is much larger than the freed
+  space, this option allows mlcache to retry the operation (and free more slots)
+  until the maximum number of tries is reached or enough memory was freed for
+  the value to fit.
+  **Default**: `3`.
+- `shm_miss`: _optional_ string. The name of a `lua_shared_dict`. When
+  specified, misses (callbacks returning `nil`) will be cached in this separate
+  lua_shared_dict. This is useful to ensure that a large number of cache misses
+  (e.g. triggered by clients) does not evict too many cache items (hits) from
+  the lua_shared_dict specified by `shm`. Particularly useful depending on the
+  type of workload put on mlcache.
+- `resty_lock_opts`: options for [lua-resty-lock] instances. When mlcache runs
+  the L3 callback, it uses lua-resty-lock to ensure that a single worker runs
+  the provided callback.
 - `l1_serializer`: an _optional_ function. Its signature and accepted values
   are documented under the [get()](#get) method, along with an example.  If
   specified, this function will be called by each worker every time the L1 LRU
@@ -232,13 +245,6 @@ holding the desired options for this instance. The possible options are:
   cache.  It can thus avoid your application from having to repeat such
   transformation upon every cache hit, such as creating tables, cdata objects,
   functions, etc...
-- `shm_set_tries`: the number of tries for the lua_shared_dict `set()`
-  operation. When the lua_shared_dict is full, it attempts to free up to 30
-  items from its queue. When the value being set is much larger than the freed
-  space, this option allows mlcache to retry the operation (and free more slots)
-  until the maximum number of tries is reached or enough memory was freed for
-  the value to fit.
-  **Default**: `3`.
 - `ipc_shm`: _optional_ string. If you wish to use [set()](#set),
   [delete()](#delete), or [purge()](#purge), you must provide an IPC
   (Inter-process communication) mechanism for workers to invalidate their L1

@@ -13,7 +13,8 @@ my $pwd = cwd();
 
 our $HttpConfig = qq{
     lua_package_path "$pwd/lib/?.lua;;";
-    lua_shared_dict  cache_shm 1m;
+    lua_shared_dict  cache_shm      1m;
+    lua_shared_dict  cache_shm_miss 1m;
 
     init_by_lua_block {
         -- local verbose = true
@@ -400,7 +401,88 @@ from shm: nil nil
 
 
 
-=== TEST 9: get() caches a string
+=== TEST 9: get() caches nil in 'shm_miss' if specified
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local dict = ngx.shared.cache_shm
+            local dict_miss = ngx.shared.cache_shm_miss
+            local mlcache = require "resty.mlcache"
+
+            local cache, err = mlcache.new("my_mlcache", "cache_shm", {
+                shm_miss = "cache_shm_miss"
+            })
+            if not cache then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            -- from callback
+
+            local data, err = cache:get("key", nil, function() return nil end)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+            ngx.say("from callback: ", type(data), " ", data)
+
+            -- direct shm checks
+            -- concat key since shm values are namespaced per their the
+            -- mlcache name
+            local key = "my_mlcachekey"
+
+            local v, err = dict:get(key)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+            ngx.say("no value in shm: ", v == nil)
+
+            local v, err = dict_miss:get(key)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+            ngx.say("value in shm_miss is a sentinel nil value: ", v ~= nil)
+
+            -- subsequent calls from shm
+
+            cache.lru:delete("key")
+
+            -- here, we return 'true' and not nil in the callback. this is to
+            -- ensure that get() will check the shm_miss shared dict and read
+            -- the nil sentinel value in there, thus will not call the
+            -- callback.
+
+            local data, err = cache:get("key", nil, function() return true end)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+            ngx.say("from shm: ", type(data), " ", data)
+
+            -- from lru
+
+            local v = cache.lru:get("key")
+
+            ngx.say("value in lru is a sentinel nil value: ", v ~= nil)
+        }
+    }
+--- request
+GET /t
+--- response_body
+from callback: nil nil
+no value in shm: true
+value in shm_miss is a sentinel nil value: true
+from shm: nil nil
+value in lru is a sentinel nil value: true
+--- no_error_log
+[error]
+
+
+
+=== TEST 10: get() caches a string
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -461,7 +543,7 @@ from shm: string hello world
 
 
 
-=== TEST 10: get() caches a table
+=== TEST 11: get() caches a table
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -526,7 +608,7 @@ from shm: table world bar
 
 
 
-=== TEST 11: get() errors when caching an unsupported type
+=== TEST 12: get() errors when caching an unsupported type
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -559,7 +641,7 @@ qr/\[error\] .*?mlcache\.lua:\d+: cannot cache value of type userdata/
 
 
 
-=== TEST 12: get() calls callback with args
+=== TEST 13: get() calls callback with args
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -594,7 +676,7 @@ GET /t
 
 
 
-=== TEST 13: get() caches hit for 'ttl' from LRU (in ms)
+=== TEST 14: get() caches hit for 'ttl' from LRU (in ms)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -632,7 +714,7 @@ in callback
 
 
 
-=== TEST 14: get() caches miss (nil) for 'neg_ttl' from LRU (in ms)
+=== TEST 15: get() caches miss (nil) for 'neg_ttl' from LRU (in ms)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -676,7 +758,7 @@ in callback
 
 
 
-=== TEST 15: get() caches for 'opts.ttl' from LRU (in ms)
+=== TEST 16: get() caches for 'opts.ttl' from LRU (in ms)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -714,7 +796,7 @@ in callback
 
 
 
-=== TEST 16: get() caches for 'opts.neg_ttl' from LRU (in ms)
+=== TEST 17: get() caches for 'opts.neg_ttl' from LRU (in ms)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -755,7 +837,7 @@ in callback
 
 
 
-=== TEST 17: get() with ttl of 0 means indefinite caching
+=== TEST 18: get() with ttl of 0 means indefinite caching
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -802,7 +884,7 @@ in shm after exp: 123
 
 
 
-=== TEST 18: get() with neg_ttl of 0 means indefinite caching for nil values
+=== TEST 19: get() with neg_ttl of 0 means indefinite caching for nil values
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -851,7 +933,7 @@ in shm after exp: nil
 
 
 
-=== TEST 19: get() errors when ttl < 0
+=== TEST 20: get() errors when ttl < 0
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -884,7 +966,7 @@ opts.ttl must be >= 0
 
 
 
-=== TEST 20: get() errors when neg_ttl < 0
+=== TEST 21: get() errors when neg_ttl < 0
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -917,7 +999,7 @@ opts.neg_ttl must be >= 0
 
 
 
-=== TEST 21: get() shm -> LRU caches for 'opts.ttl - since' in ms
+=== TEST 22: get() shm -> LRU caches for 'opts.ttl - since' in ms
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -975,7 +1057,7 @@ is stale in LRU: 123
 
 
 
-=== TEST 22: get() shm -> LRU caches non-nil for 'indefinite' if ttl is 0
+=== TEST 23: get() shm -> LRU caches non-nil for 'indefinite' if ttl is 0
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1019,7 +1101,7 @@ is not expired in LRU: 123
 
 
 
-=== TEST 23: get() shm -> LRU caches for 'opts.neg_ttl - since' in ms
+=== TEST 24: get() shm -> LRU caches for 'opts.neg_ttl - since' in ms
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1079,7 +1161,7 @@ is stale in LRU: table: \S+
 
 
 
-=== TEST 24: get() shm -> LRU caches nil for 'indefinite' if neg_ttl is 0
+=== TEST 25: get() shm -> LRU caches nil for 'indefinite' if neg_ttl is 0
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1122,7 +1204,7 @@ is stale in LRU: nil
 
 
 
-=== TEST 25: get() returns hit level
+=== TEST 26: get() returns hit level
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1160,7 +1242,7 @@ hit level from shm: 2
 
 
 
-=== TEST 26: get() returns hit level for nil hits
+=== TEST 27: get() returns hit level for nil hits
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1198,7 +1280,7 @@ hit level from shm: 2
 
 
 
-=== TEST 27: get() JITs when hit coming from LRU
+=== TEST 28: get() JITs when hit coming from LRU
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1228,7 +1310,7 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 
 
 
-=== TEST 28: get() JITs when hit of scalar value coming from shm
+=== TEST 29: get() JITs when hit of scalar value coming from shm
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1287,7 +1369,7 @@ GET /t
 
 
 
-=== TEST 29: get() JITs when hit of table value coming from shm
+=== TEST 30: get() JITs when hit of table value coming from shm
 --- SKIP: blocked until custom table serializer
 --- http_config eval: $::HttpConfig
 --- config
@@ -1321,7 +1403,7 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):18 loop\]/
 
 
 
-=== TEST 30: get() JITs when miss coming from LRU
+=== TEST 31: get() JITs when miss coming from LRU
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1352,7 +1434,7 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 
 
 
-=== TEST 31: get() JITs when miss coming from shm
+=== TEST 32: get() JITs when miss coming from shm
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1385,7 +1467,7 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 
 
 
-=== TEST 32: get() callback can return nil + err
+=== TEST 33: get() callback can return nil + err
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1427,7 +1509,7 @@ cb2 return values: foo an error occurred again
 
 
 
-=== TEST 33: get() callback's 3th return value can override the ttl
+=== TEST 34: get() callback's 3th return value can override the ttl
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1478,7 +1560,7 @@ in callback 2
 
 
 
-=== TEST 34: get() callback's 3th return value can override the neg_ttl
+=== TEST 35: get() callback's 3th return value can override the neg_ttl
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1529,7 +1611,7 @@ in callback 2
 
 
 
-=== TEST 35: get() ignores invalid callback 3th return value (not number, not positive)
+=== TEST 36: get() ignores invalid callback 3th return value (not number, not positive)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1608,7 +1690,7 @@ in positive callback
 
 
 
-=== TEST 36: get() passes 'resty_lock_opts' for L3 calls
+=== TEST 37: get() passes 'resty_lock_opts' for L3 calls
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1651,7 +1733,7 @@ was given 'opts.resty_lock_opts': true
 
 
 
-=== TEST 37: get() returns data even if failed to set in shm
+=== TEST 38: get() returns data even if failed to set in shm
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1703,7 +1785,7 @@ qr/\[warn\] .*? could not write to lua_shared_dict 'cache_shm' after 3 tries \(n
 
 
 
-=== TEST 38: get() errors on invalid opts.shm_set_tries
+=== TEST 39: get() errors on invalid opts.shm_set_tries
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1743,7 +1825,7 @@ opts.shm_set_tries must be >= 1
 
 
 
-=== TEST 39: get() with default shm_set_tries to LRU evict items when a large value is being cached
+=== TEST 40: get() with default shm_set_tries to LRU evict items when a large value is being cached
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1814,7 +1896,7 @@ callback was called: 1 times
 
 
 
-=== TEST 40: get() respects instance opts.shm_set_tries to LRU evict items when a large value is being cached
+=== TEST 41: get() respects instance opts.shm_set_tries to LRU evict items when a large value is being cached
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1887,7 +1969,7 @@ callback was called: 1 times
 
 
 
-=== TEST 41: get() accepts opts.shm_set_tries to LRU evict items when a large value is being cached
+=== TEST 42: get() accepts opts.shm_set_tries to LRU evict items when a large value is being cached
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1960,7 +2042,7 @@ callback was called: 1 times
 
 
 
-=== TEST 42: get() caches data in L1 LRU even if failed to set in shm
+=== TEST 43: get() caches data in L1 LRU even if failed to set in shm
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {

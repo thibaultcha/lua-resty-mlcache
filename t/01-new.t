@@ -506,7 +506,55 @@ opts.shm_set_tries must be >= 1
 
 
 
-=== TEST 19: new() creates an mlcache object with default attributes
+=== TEST 19: new() validates opts.shm_miss
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local ok, err = pcall(mlcache.new, "name", "cache_shm", {
+                shm_miss = false,
+            })
+            if not ok then
+                ngx.say(err)
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body
+opts.shm_miss must be a string
+--- no_error_log
+[error]
+
+
+
+=== TEST 20: new() ensures opts.shm_miss exists
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local ok, err = mlcache.new("name", "cache_shm", {
+                shm_miss = "foo",
+            })
+            if not ok then
+                ngx.say(err)
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body
+no such lua_shared_dict for opts.shm_miss: foo
+--- no_error_log
+[error]
+
+
+
+=== TEST 21: new() creates an mlcache object with default attributes
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -534,7 +582,7 @@ number
 
 
 
-=== TEST 20: new() accepts user-provided LRU instances via opts.lru
+=== TEST 22: new() accepts user-provided LRU instances via opts.lru
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
