@@ -22,7 +22,7 @@ values (documented below) do not break any dependent application.
 #### Added
 
 - Implement a new `purge()` method to clear all cached items in both
-  the L2 and L3 caches.
+  the L1 and L2 caches.
   [#34](https://github.com/thibaultcha/lua-resty-mlcache/pull/34)
 - Implement a new `shm_miss` option. This option receives the name
   of a lua_shared_dict, and when specified, will cache misses there instead of
@@ -36,7 +36,7 @@ values (documented below) do not break any dependent application.
   Thanks to [@jdesgats](https://github.com/jdesgats) for the contribution.
   [#29](https://github.com/thibaultcha/lua-resty-mlcache/pull/29)
 - Implement a new `shm_set_tries` option to retry `shm:set()`
-  operations and ensure LRU eviction when caching unusually large values.
+  operations and ensure LRU eviction when caching values of disparate sizes.
   [#41](https://github.com/thibaultcha/lua-resty-mlcache/issues/41)
 - The L3 callback can now return `nil + err`, which will be bubbled up
   to the caller of `get()`. Prior to this change, the second return value of
