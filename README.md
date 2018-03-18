@@ -330,6 +330,13 @@ options:
   accepts fractional number parts, like `0.3`. A `neg_ttl` of `0` means the
   cached misses will never expire.
   **Default:** inherited from the instance.
+- `shm_set_tries`: the number of tries for the lua_shared_dict `set()`
+  operation. When the lua_shared_dict is full, it attempts to free up to 30
+  items from its queue. When the value being set is much larger than the freed
+  space, this option allows mlcache to retry the operation (and free more slots)
+  until the maximum number of tries is reached or enough memory was freed for
+  the value to fit.
+  **Default:** inherited from the instance.
 - `l1_serializer`: an _optional_ function. Its signature and accepted values
   are documented in the example below.
   If specified, this function will be called by each worker every time the L1
