@@ -800,8 +800,8 @@ function _M:set(key, opts, value)
         end
     end
 
-    local ok, err = self.broadcast(self.events.invalidation.channel, key)
-    if not ok then
+    local _, err = self.broadcast(self.events.invalidation.channel, key)
+    if err then
         return nil, "could not broadcast update: " .. err
     end
 
@@ -835,8 +835,8 @@ function _M:delete(key)
     -- delete from LRU and propagate
     self.lru:delete(key)
 
-    local ok, err = self.broadcast(self.events.invalidation.channel, key)
-    if not ok then
+    local _, err = self.broadcast(self.events.invalidation.channel, key)
+    if err then
         return nil, "could not broadcast deletion: " .. err
     end
 
@@ -859,8 +859,8 @@ function _M:purge(flush_expired)
     -- clear LRU content and propagate
     rebuild_lru(self)
 
-    local ok, err = self.broadcast(self.events.purge.channel, "")
-    if not ok and err ~= nil then
+    local _, err = self.broadcast(self.events.purge.channel, "")
+    if err then
         return nil, "could not broadcast purge: " .. err
     end
 
@@ -873,8 +873,8 @@ function _M:update(timeout)
         error("no polling configured, specify opts.ipc_shm or opts.ipc.poll", 2)
     end
 
-    local ok, err = self.poll(timeout)
-    if not ok and err ~= nil then
+    local _, err = self.poll(timeout)
+    if err then
         return nil, "could not poll ipc events: " .. err
     end
 
