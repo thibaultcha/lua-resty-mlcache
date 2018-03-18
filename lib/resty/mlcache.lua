@@ -265,6 +265,10 @@ function _M.new(name, shm, opts)
                 error("opts.shm_set_tries must be >= 1", 2)
             end
         end
+
+        if opts.shm_miss ~= nil and type(opts.shm_miss) ~= "string" then
+            error("opts.shm_miss must be a string", 2)
+        end
     else
         opts = {}
     end
@@ -274,10 +278,21 @@ function _M.new(name, shm, opts)
         return nil, "no such lua_shared_dict: " .. shm
     end
 
+    local dict_miss
+    if opts.shm_miss then
+        dict_miss = shared[opts.shm_miss]
+        if not dict_miss then
+            return nil, "no such lua_shared_dict for opts.shm_miss: "
+                        .. opts.shm_miss
+        end
+    end
+
     local self          = {
         name            = name,
         dict            = dict,
         shm             = shm,
+        dict_miss       = dict_miss,
+        shm_miss        = opts.shm_miss,
         ttl             = opts.ttl     or 30,
         neg_ttl         = opts.neg_ttl or 5,
         lru_size        = opts.lru_size or 100,
@@ -391,7 +406,7 @@ local function set_lru(self, key, value, ttl, neg_ttl, l1_serializer)
 end
 
 
-local function shm_set_retries(self, key, val, ttl, max_tries)
+local function shm_set_retries(shm, dict, key, val, ttl, max_tries)
     -- we will call `set()` N times to work around potential shm fragmentation.
     -- when the shm is full, it will only evict about 30 to 90 items (via
     -- LRU), which could lead to a situation where `set()` still does not
@@ -404,7 +419,7 @@ local function shm_set_retries(self, key, val, ttl, max_tries)
     while tries < max_tries do
         tries = tries + 1
 
-        ok, err = self.dict:set(key, val, ttl)
+        ok, err = dict:set(key, val, ttl)
         if ok or err and err ~= "no memory" then
             break
         end
@@ -412,12 +427,12 @@ local function shm_set_retries(self, key, val, ttl, max_tries)
 
     if not ok then
         if err ~= "no memory" then
-            return nil, "could not write to lua_shared_dict '" .. self.shm
+            return nil, "could not write to lua_shared_dict '" .. shm
                         .. "': " .. err
         end
 
         ngx_log(WARN, "could not write to lua_shared_dict '",
-                      self.shm, "' after ", tries, " tries (no memory), ",
+                      shm, "' after ", tries, " tries (no memory), ",
                       "it is either fragmented or cannot allocate more ",
                       "memory, consider increasing 'opts.shm_set_tries'")
     end
@@ -430,12 +445,15 @@ local function set_shm(self, shm_key, value, ttl, neg_ttl, shm_set_tries)
     local at = now()
 
     if value == nil then
-        local shm_nil = marshallers.shm_nil(at, neg_ttl)
+        local shm_nil_marshalled = marshallers.shm_nil(at, neg_ttl)
+
+        local shm = self.shm_miss or self.shm
+        local dict = self.dict_miss or self.dict
 
         -- we need to cache that this was a miss, and ensure cache hit for a
         -- nil value
-        local ok, err = shm_set_retries(self, shm_key, shm_nil, neg_ttl,
-                                        shm_set_tries)
+        local ok, err = shm_set_retries(shm, dict, shm_key, shm_nil_marshalled,
+                                        neg_ttl, shm_set_tries)
         if not ok then
             return nil, err
         end
@@ -462,8 +480,8 @@ local function set_shm(self, shm_key, value, ttl, neg_ttl, shm_set_tries)
 
     -- cache value in shm for currently-locked workers
 
-    local ok, err = shm_set_retries(self, shm_key, shm_marshalled, ttl,
-                                    shm_set_tries)
+    local ok, err = shm_set_retries(self.shm, self.dict, shm_key,
+                                    shm_marshalled, ttl, shm_set_tries)
     if not ok then
         return nil, err
     end
@@ -476,6 +494,14 @@ local function get_shm_set_lru(self, key, shm_key, l1_serializer)
     local v, err = self.dict:get(shm_key)
     if err then
         return nil, "could not read from lua_shared_dict: " .. err
+    end
+
+    if self.shm_miss and v == nil then
+        -- if we cache misses in another shm, maybe it is there
+        v, err = self.dict_miss:get(shm_key)
+        if err then
+            return nil, "could not read from lua_shared_dict: " .. err
+        end
     end
 
     if v ~= nil then
