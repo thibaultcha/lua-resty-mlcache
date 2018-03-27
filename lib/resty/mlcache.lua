@@ -753,6 +753,15 @@ function _M:peek(key)
         return nil, "could not read from lua_shared_dict: " .. err
     end
 
+    -- if we specified shm_miss, it might be a negative hit cached
+    -- there
+    if self.dict_miss and v == nil then
+        v, err = self.dict_miss:get(namespaced_key)
+        if err then
+            return nil, "could not read from lua_shared_dict: " .. err
+        end
+    end
+
     if v ~= nil then
         local str_serialized, value_type, at, ttl = unmarshallers.shm_value(v)
 
@@ -793,6 +802,20 @@ function _M:set(key, opts, value)
 
         set_lru(self, key, value, ttl, neg_ttl, l1_serializer)
 
+        if self.dict_miss then
+            -- since we specified a separate shm for negative caches, we
+            -- must make sure that we clear any value that may have been
+            -- set in the other shm
+            local dict = value == nil and self.dict or self.dict_miss
+
+            -- TODO: there is a potential race-condition here between this
+            --       :delete() and the subsequent :set() in set_shm()
+            local ok, err = dict:delete(namespaced_key)
+            if not ok then
+                return nil, "could not delete from shm: " .. err
+            end
+        end
+
         local ok, err = set_shm(self, namespaced_key, value, ttl, neg_ttl,
                                 shm_set_tries)
         if not ok then
@@ -830,6 +853,16 @@ function _M:delete(key)
         if not ok then
             return nil, "could not delete from shm: " .. err
         end
+
+        -- instance uses shm_miss for negative caches, since we don't know
+        -- where the cached value is (is it nil or not?), we must remove it
+        -- from both
+        if self.dict_miss then
+            ok, err = self.dict_miss:delete(namespaced_key)
+            if not ok then
+                return nil, "could not delete from shm: " .. err
+            end
+        end
     end
 
     -- delete from LRU and propagate
@@ -852,8 +885,17 @@ function _M:purge(flush_expired)
     -- clear shm first
     self.dict:flush_all()
 
+    -- clear negative caches shm if specified
+    if self.dict_miss then
+        self.dict_miss:flush_all()
+    end
+
     if flush_expired then
         self.dict:flush_expired()
+
+        if self.dict_miss then
+            self.dict_miss:flush_expired()
+        end
     end
 
     -- clear LRU content and propagate

@@ -13,7 +13,8 @@ my $pwd = cwd();
 
 our $HttpConfig = qq{
     lua_package_path "$pwd/lib/?.lua;;";
-    lua_shared_dict  cache_shm 1m;
+    lua_shared_dict  cache_shm      1m;
+    lua_shared_dict  cache_shm_miss 1m;
 
     init_by_lua_block {
         -- local verbose = true
@@ -150,7 +151,57 @@ ttl: 18
 
 
 
-=== TEST 4: peek() returns the value if a key has been fetched before
+=== TEST 4: peek() returns remaining ttl if shm_miss is specified
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
+                shm_miss = "cache_shm_miss",
+            }))
+
+            local function cb()
+                return nil
+            end
+
+            local val, err = cache:get("my_key", { neg_ttl = 19 }, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            local ttl, err = cache:peek("my_key")
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("ttl: ", math.ceil(ttl))
+
+            ngx.sleep(1)
+
+            local ttl, err = cache:peek("my_key")
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("ttl: ", math.ceil(ttl))
+        }
+    }
+--- request
+GET /t
+--- response_body
+ttl: 19
+ttl: 18
+--- no_error_log
+[error]
+
+
+
+=== TEST 5: peek() returns the value if a key has been fetched before
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -210,7 +261,46 @@ ttl: \d* nil_val: nil
 
 
 
-=== TEST 5: peek() JITs on hit
+=== TEST 6: peek() returns the value if shm_miss is specified
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
+                shm_miss = "cache_shm_miss",
+            }))
+
+            local function cb_nil()
+                return nil
+            end
+
+            local val, err = cache:get("my_nil_key", nil, cb_nil)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            local ttl, err, val = cache:peek("my_nil_key")
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("ttl: ", math.ceil(ttl), " nil_val: ", val)
+        }
+    }
+--- request
+GET /t
+--- response_body_like
+ttl: \d* nil_val: nil
+--- no_error_log
+[error]
+
+
+
+=== TEST 7: peek() JITs on hit
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -242,7 +332,7 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):13 loop\]/
 
 
 
-=== TEST 6: peek() JITs on miss
+=== TEST 8: peek() JITs on miss
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {

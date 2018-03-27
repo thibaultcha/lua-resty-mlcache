@@ -11,8 +11,9 @@ my $pwd = cwd();
 
 our $HttpConfig = qq{
     lua_package_path "$pwd/lib/?.lua;;";
-    lua_shared_dict  cache_shm 1m;
-    lua_shared_dict  ipc_shm   1m;
+    lua_shared_dict  cache_shm      1m;
+    lua_shared_dict  cache_shm_miss 1m;
+    lua_shared_dict  ipc_shm        1m;
 };
 
 run_tests();
@@ -111,7 +112,49 @@ cache lru value after get(): 123
 
 
 
-=== TEST 4: set() puts a value directly in its own LRU
+=== TEST 4: set() puts a negative hit directly in shm_miss if specified
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
+                ipc_shm = "ipc_shm",
+                shm_miss = "cache_shm_miss",
+            }))
+
+            -- setting a value in shm
+
+            assert(cache:set("my_key", nil, nil))
+
+            -- declaring a callback that MUST NOT be called
+
+            local function cb()
+                ngx.log(ngx.ERR, "callback was called but should not have")
+            end
+
+            -- try to get()
+
+            local value, err = cache:get("my_key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("value from get(): ", value)
+        }
+    }
+--- request
+GET /t
+--- response_body
+value from get(): nil
+--- no_error_log
+[error]
+
+
+
+=== TEST 5: set() puts a value directly in its own LRU
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -142,7 +185,7 @@ cache lru value after set(): 123
 
 
 
-=== TEST 5: set() respects 'ttl' for non-nil values
+=== TEST 6: set() respects 'ttl' for non-nil values
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -201,7 +244,7 @@ value from get(): 123
 
 
 
-=== TEST 6: set() respects 'neg_ttl' for nil values
+=== TEST 7: set() respects 'neg_ttl' for nil values
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -266,7 +309,7 @@ value from get(): nil
 
 
 
-=== TEST 7: set() respects 'set_shm_tries'
+=== TEST 8: set() respects 'set_shm_tries'
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -340,7 +383,121 @@ callback was called: false
 
 
 
-=== TEST 8: set() calls broadcast() with invalidated key
+=== TEST 9: set() with shm_miss can set a nil where a value was
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
+                ipc_shm = "ipc_shm",
+                shm_miss = "cache_shm_miss",
+            }))
+
+            local function cb()
+                return 123
+            end
+
+            -- install a non-nil value in the cache
+
+            local value, err = cache:get("my_key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("initial value from get(): ", value)
+
+            -- override that value with a negative hit that
+            -- must go in the shm_miss (and the shm value must be
+            -- erased)
+
+            assert(cache:set("my_key", nil, nil))
+
+            -- and remove it from the LRU
+
+            cache.lru:delete("my_key")
+
+            -- ok, now we should be getting nil from the cache
+
+            local value, err = cache:get("my_key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("value from get() after set(): ", value)
+        }
+    }
+--- request
+GET /t
+--- response_body
+initial value from get(): 123
+value from get() after set(): nil
+--- no_error_log
+[error]
+
+
+
+=== TEST 10: set() with shm_miss can set a value where a nil was
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
+                ipc_shm = "ipc_shm",
+                shm_miss = "cache_shm_miss",
+            }))
+
+            local function cb()
+                return nil
+            end
+
+            -- install a non-nil value in the cache
+
+            local value, err = cache:get("my_key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("initial value from get(): ", value)
+
+            -- override that value with a negative hit that
+            -- must go in the shm_miss (and the shm value must be
+            -- erased)
+
+            assert(cache:set("my_key", nil, 123))
+
+            -- and remove it from the LRU
+
+            cache.lru:delete("my_key")
+
+            -- ok, now we should be getting nil from the cache
+
+            local value, err = cache:get("my_key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("value from get() after set(): ", value)
+        }
+    }
+--- request
+GET /t
+--- response_body
+initial value from get(): nil
+value from get() after set(): 123
+--- no_error_log
+[error]
+
+
+
+=== TEST 11: set() calls broadcast() with invalidated key
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
