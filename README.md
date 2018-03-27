@@ -4,7 +4,7 @@
 
 Fast and automated multi-level cache for OpenResty.
 
-This library can be can be manipulated as a key/value store caching scalar Lua
+This library can be manipulated as a key/value store caching scalar Lua
 types and tables, but is built on top of [lua_shared_dict] and
 [lua-resty-lrucache]. This combination allows for extremely performant and
 flexible caching.
@@ -115,7 +115,7 @@ http {
             content_by_lua_block {
                 local function callback(username)
                     -- this only runs *once* until the key expires, so
-                    -- do expansive operations like connecting to a remote
+                    -- do expensive operations like connecting to a remote
                     -- backend here. i.e: call a MySQL server in this callback
                     return db:get_user(username) -- { name = "John Doe", email = "john@example.com" }
                 end
@@ -371,7 +371,7 @@ local function callback(arg1, arg2, arg3)
     -- value: the value to cache (Lua scalar or table)
     -- err: if not `nil`, will abort get(), which will return `value` and `err`
     -- ttl: ttl for this value - will override `ttl` or `neg_ttl` if specified
-    return value, nil, ttl
+    return value, err, ttl
 end
 ```
 
