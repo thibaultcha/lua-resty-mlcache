@@ -46,6 +46,15 @@ values (documented below) do not break any dependent application.
 - Support for custom IPC module.
   [#31](https://github.com/thibaultcha/lua-resty-mlcache/issues/31)
 
+#### Fixed
+
+- In the event of a `no memory` error returned by the L2 lua_shared_dict cache
+  (after the number of `shm_set_tries` failed), we do not interrupt the `get()`
+  flow to return an error anymore. Instead, the retrieved value is now bubbled
+  up for insertion in L1, and returned to the caller. A warning log is (by
+  default) printed in the nginx error logs.
+  [#41](https://github.com/thibaultcha/lua-resty-mlcache/issues/41)
+
 [Back to TOC](#table-of-contents)
 
 ## [1.0.1]
