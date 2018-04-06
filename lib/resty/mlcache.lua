@@ -670,7 +670,31 @@ function _M:get(key, opts, cb, ...)
 
     local elapsed, err = lock:lock(LOCK_KEY_PREFIX .. namespaced_key)
     if not elapsed then
-        return nil, "could not aquire callback lock: " .. err
+        if err ~= "timeout" then
+            return nil, "could not aquire callback lock: " .. err
+        end
+
+        -- in case of a timeout, there's still hope: if the initial worker
+        -- that held the lock released it and then another locked it to see if
+        -- the result was arrived at the wrong time, this worker might timeout
+        -- because of that.
+        -- This event has a hight probability to happen when the steps in the
+        -- spin-lock loop get bigger.
+        data, err = get_shm_set_lru(self, key, namespaced_key)
+        if err then
+            return nil, err
+        end
+
+        if data == CACHE_MISS_SENTINEL_LRU then
+            return nil, nil, 2
+        end
+
+        if data ~= nil then
+            return data, nil, 2
+        end
+
+        -- ok, this time there's no more hope
+        return nil, "could not aquire callback lock: timeout"
     end
 
     -- check for another worker's success at running the callback
