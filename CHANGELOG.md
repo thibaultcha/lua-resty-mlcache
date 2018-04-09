@@ -1,6 +1,7 @@
 # Table of Contents
 
 - [Unreleased](#unreleased)
+- [2.0.2](#2.0.2)
 - [2.0.1](#2.0.1)
 - [2.0.0](#2.0.0)
 - [1.0.1](#1.0.1)
@@ -8,7 +9,20 @@
 
 ## Unreleased
 
-Diff: [2.0.1...master]
+Diff: [2.0.2...master]
+
+[Back to TOC](#table-of-contents)
+
+## [2.0.2]
+
+> Released on: 2018/04/09
+
+#### Fixed
+
+- Make `get()` lookup in shm after lock timeout. This prevents a possible (but
+  rare) race condition under high load. Thanks to
+  [@jdesgats](https://github.com/jdesgats) for the report and initial fix.
+  [#49](https://github.com/thibaultcha/lua-resty-mlcache/pull/49)
 
 [Back to TOC](#table-of-contents)
 
@@ -91,7 +105,8 @@ Initial release.
 
 [Back to TOC](#table-of-contents)
 
-[2.0.1...master]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.0.1...master
+[2.0.2...master]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.0.2...master
+[2.0.2]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.0.1...2.0.2
 [2.0.1]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.0.0...2.0.1
 [2.0.0]: https://github.com/thibaultcha/lua-resty-mlcache/compare/1.0.1...2.0.0
 [1.0.1]: https://github.com/thibaultcha/lua-resty-mlcache/compare/1.0.0...1.0.1
