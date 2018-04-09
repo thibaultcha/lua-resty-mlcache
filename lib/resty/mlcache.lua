@@ -607,7 +607,7 @@ end
 
 local function unlock_and_ret(lock, res, err, hit_lvl)
     local ok, lerr = lock:unlock()
-    if not ok then
+    if not ok and lerr ~= "unlocked" then
         return nil, "could not unlock callback: " .. lerr
     end
 
@@ -668,9 +668,9 @@ function _M:get(key, opts, cb, ...)
         return nil, "could not create lock: " .. err
     end
 
-    local elapsed, err = lock:lock(LOCK_KEY_PREFIX .. namespaced_key)
-    if not elapsed then
-        return nil, "could not aquire callback lock: " .. err
+    local elapsed, lerr = lock:lock(LOCK_KEY_PREFIX .. namespaced_key)
+    if not elapsed and lerr ~= "timeout" then
+        return nil, "could not acquire callback lock: " .. lerr
     end
 
     -- check for another worker's success at running the callback
@@ -680,15 +680,24 @@ function _M:get(key, opts, cb, ...)
         return unlock_and_ret(lock, nil, err)
     end
 
-    if data then
-        if data == CACHE_MISS_SENTINEL_LRU then
-            return unlock_and_ret(lock, nil, nil, 2)
-        end
+    if data == CACHE_MISS_SENTINEL_LRU then
+        return unlock_and_ret(lock, nil, nil, 2)
+    end
 
+    if data ~= nil then
         return unlock_and_ret(lock, data, nil, 2)
     end
 
-    -- still not in shm, we are responsible for running the callback
+    -- data is nil, we are either the 1st worker to hold the lock, or
+    -- a subsequent worker whose lock has timed out before the 1st one
+    -- finished to run the callback
+
+    if lerr == "timeout" then
+        return nil, "could not acquire callback lock: timeout"
+    end
+
+    -- still not in shm, we are the 1st worker to hold the lock, and thus
+    -- responsible for running the callback
 
     local pok, perr, err, new_ttl = pcall(cb, ...)
     if not pok then
