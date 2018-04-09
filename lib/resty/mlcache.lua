@@ -1,6 +1,5 @@
 -- vim: st=4 sts=4 sw=4 et:
 
-local ffi        = require "ffi"
 local cjson      = require "cjson.safe"
 local lrucache   = require "resty.lrucache"
 local resty_lock = require "resty.lock"
@@ -23,29 +22,8 @@ local WARN         = ngx.WARN
 
 local LOCK_KEY_PREFIX         = "lua-resty-mlcache:lock:"
 local CACHE_MISS_SENTINEL_LRU = {}
-local LRU_INSTANCES           = {}
+local LRU_INSTANCES           = setmetatable({}, { __mode = 'v' })
 local SHM_SET_DEFAULT_TRIES   = 3
-
-
-local c_str_type    = ffi.typeof("char *")
-local c_lru_gc_type = ffi.metatype([[
-    struct {
-        char *lru_name;
-        int   len;
-    }
-]], {
-    __gc = function(c_gc_type)
-        local lru_name = ffi.string(c_gc_type.lru_name, c_gc_type.len)
-
-        local lru_gc = LRU_INSTANCES[lru_name]
-        if lru_gc then
-            lru_gc.count = lru_gc.count - 1
-            if lru_gc.count <= 0 then
-                LRU_INSTANCES[lru_name] = nil
-            end
-        end
-    end
-})
 
 
 local TYPES_LOOKUP = {
@@ -141,33 +119,14 @@ local function rebuild_lru(self)
     end
 
     -- Several mlcache instances can have the same name and hence, the same
-    -- lru instance. We need to GC such LRU instances when all mlcache
-    -- instances using them are GC'ed.
-    -- We do this by using a C struct with a __gc metamethod.
-
-    local c_lru_gc    = ffi.new(c_lru_gc_type)
-    c_lru_gc.len      = #name
-    c_lru_gc.lru_name = ffi.cast(c_str_type, name)
-
-    -- keep track of our LRU instance and a counter of how many mlcache
-    -- instances are refering to it
-
-    local lru_gc = LRU_INSTANCES[name]
-    if not lru_gc then
-        lru_gc              = { count = 0, lru = nil }
-        LRU_INSTANCES[name] = lru_gc
-    end
-
-    local lru = lru_gc.lru
+    -- lru instance. To achieve that, we keep a reference to the LRU
+    -- instances in a weak table so they get GCed when needed.
+    local lru = LRU_INSTANCES[name]
     if not lru then
-        lru        = lrucache.new(self.lru_size)
-        lru_gc.lru = lru
+        lru = lrucache.new(self.lru_size)
+        LRU_INSTANCES[name] = lru
     end
-
-    self.lru      = lru
-    self.c_lru_gc = c_lru_gc
-
-    lru_gc.count = lru_gc.count + 1
+    self.lru = lru
 end
 
 
