@@ -1,5 +1,6 @@
 -- vim: st=4 sts=4 sw=4 et:
 
+local bit        = require "bit"
 local cjson      = require "cjson.safe"
 local lrucache   = require "resty.lrucache"
 local resty_lock = require "resty.lock"
@@ -24,6 +25,11 @@ local CACHE_MISS_SENTINEL_LRU = {}
 local SHM_SET_DEFAULT_TRIES = 3
 local LOCK_KEY_PREFIX = "lua-resty-mlcache:lock:"
 local LRU_INSTANCES = setmetatable({}, { __mode = "v" })
+
+
+local SHM_FLAGS = {
+    stale = 0x01,
+}
 
 
 local TYPES_LOOKUP = {
@@ -366,7 +372,20 @@ local function set_lru(self, key, value, ttl, neg_ttl, l1_serializer)
 end
 
 
-local function shm_set_retries(shm, dict, key, val, ttl, max_tries)
+local function shm_set_retries(self, shm_key, shm_value, flags, is_nil, ttl,
+                               neg_ttl, shm_set_tries)
+    local shm = self.shm
+    local dict = self.dict
+
+    if is_nil then
+        ttl = neg_ttl
+
+        if self.dict_miss then
+            shm = self.shm_miss
+            dict = self.dict_miss
+        end
+    end
+
     -- we will call `set()` N times to work around potential shm fragmentation.
     -- when the shm is full, it will only evict about 30 to 90 items (via
     -- LRU), which could lead to a situation where `set()` still does not
@@ -376,10 +395,10 @@ local function shm_set_retries(shm, dict, key, val, ttl, max_tries)
     local tries = 0
     local ok, err
 
-    while tries < max_tries do
+    while tries < shm_set_tries do
         tries = tries + 1
 
-        ok, err = dict:set(key, val, ttl)
+        ok, err = dict:set(shm_key, shm_value, ttl, flags or 0)
         if ok or err and err ~= "no memory" then
             break
         end
@@ -401,24 +420,11 @@ local function shm_set_retries(shm, dict, key, val, ttl, max_tries)
 end
 
 
-local function set_shm(self, shm_key, value, ttl, neg_ttl, shm_set_tries)
+local function marshall_for_shm(value, ttl, neg_ttl)
     local at = now()
 
     if value == nil then
-        local shm_nil_marshalled = marshallers.shm_nil(at, neg_ttl)
-
-        local shm = self.shm_miss or self.shm
-        local dict = self.dict_miss or self.dict
-
-        -- we need to cache that this was a miss, and ensure cache hit for a
-        -- nil value
-        local ok, err = shm_set_retries(shm, dict, shm_key, shm_nil_marshalled,
-                                        neg_ttl, shm_set_tries)
-        if not ok then
-            return nil, err
-        end
-
-        return true
+        return marshallers.shm_nil(at, neg_ttl), nil, true -- is_nil
     end
 
     -- serialize insertion time + Lua types for shm storage
@@ -435,37 +441,80 @@ local function set_shm(self, shm_key, value, ttl, neg_ttl, shm_set_tries)
                     .. err
     end
 
-    local shm_marshalled = marshallers.shm_value(str_marshalled, value_type,
-                                                 at, ttl)
-
-    -- cache value in shm for currently-locked workers
-
-    local ok, err = shm_set_retries(self.shm, self.dict, shm_key,
-                                    shm_marshalled, ttl, shm_set_tries)
-    if not ok then
-        return nil, err
-    end
-
-    return true
+    return marshallers.shm_value(str_marshalled, value_type, at, ttl)
 end
 
 
-local function get_shm_set_lru(self, key, shm_key, l1_serializer)
-    local v, err = self.dict:get(shm_key)
-    if err then
+
+local function set_shm(self, shm_key, value, ttl, neg_ttl, shm_set_tries)
+    local shm_value, err, is_nil = marshall_for_shm(value, ttl, neg_ttl)
+    if not shm_value then
+        return nil, err
+    end
+
+    return shm_set_retries(self, shm_key, shm_value, nil, is_nil, ttl, neg_ttl,
+                           shm_set_tries)
+end
+
+
+local function get_shm_set_lru(self, key, shm_key, shm_set_tries, l1_serializer)
+    local v, err, went_stale = self.dict:get_stale(shm_key)
+    if v == nil and err then
+        -- err can be 'flags' upon successful get_stale() calls, so we
+        -- also check v == nil
         return nil, "could not read from lua_shared_dict: " .. err
     end
 
     if self.shm_miss and v == nil then
         -- if we cache misses in another shm, maybe it is there
-        v, err = self.dict_miss:get(shm_key)
-        if err then
+        v, err, went_stale = self.dict_miss:get_stale(shm_key)
+        if v == nil and err then
+            -- err can be 'flags' upon successful get_stale() calls, so we
+            -- also check v == nil
             return nil, "could not read from lua_shared_dict: " .. err
         end
     end
 
     if v ~= nil then
+        local flags = err or 0
+        local is_stale
+
         local str_serialized, value_type, at, ttl = unmarshallers.shm_value(v)
+        local is_nil = value_type == 0
+
+        if went_stale then
+            -- 1st get() of a key that went stale. Flag it as stale for all
+            -- subsequent get() calls
+            flags = bit.bor(flags, SHM_FLAGS.stale)
+
+            local ok, err = shm_set_retries(self, shm_key, v, flags, is_nil,
+                                            0, 0, shm_set_tries)
+            if not ok then
+                return nil, err
+            end
+
+            is_stale = true
+
+        else
+            is_stale = bit.band(flags, SHM_FLAGS.stale) ~= 0
+        end
+
+        local data
+
+        if not is_nil then
+            data, err = unmarshallers[value_type](str_serialized)
+            if err then
+                return nil, "could not deserialize value after lua_shared_dict "
+                            .. "retrieval: " .. err
+            end
+        end
+
+        if is_stale then
+            -- return without setting value in LRU
+            return data, nil, is_stale
+        end
+
+        -- upgrade data to L1 cache
 
         local remaining_ttl
         if ttl == 0 then
@@ -477,19 +526,7 @@ local function get_shm_set_lru(self, key, shm_key, l1_serializer)
             remaining_ttl = ttl - (now() - at)
         end
 
-        -- value_type of 0 is a nil entry
-        if value_type == 0 then
-            return set_lru(self, key, nil, remaining_ttl, remaining_ttl,
-                           l1_serializer)
-        end
-
-        local value, err = unmarshallers[value_type](str_serialized)
-        if err then
-            return nil, "could not deserialize value after lua_shared_dict " ..
-                        "retrieval: " .. err
-        end
-
-        return set_lru(self, key, value, remaining_ttl, remaining_ttl,
+        return set_lru(self, key, data, remaining_ttl, remaining_ttl,
                        l1_serializer)
     end
 end
@@ -606,21 +643,27 @@ function _M:get(key, opts, cb, ...)
 
     local ttl, neg_ttl, l1_serializer, shm_set_tries = check_opts(self, opts)
 
-    local err
-    data, err = get_shm_set_lru(self, key, namespaced_key, l1_serializer)
+    local err, is_stale
+    data, err, is_stale = get_shm_set_lru(self, key, namespaced_key,
+                                          shm_set_tries, l1_serializer)
     if err then
         return nil, err
     end
 
-    if data == CACHE_MISS_SENTINEL_LRU then
-        return nil, nil, 2
-    end
+    if not is_stale then
+        if data == CACHE_MISS_SENTINEL_LRU then
+            return nil, nil, 2
+        end
 
-    if data ~= nil then
-        return data, nil, 2
+        if data ~= nil then
+            return data, nil, 2
+        end
     end
 
     -- not in shm either
+    --   * possibly never fetched
+    --   * possibly got a stale value, in which case callback is forced
+    --
     -- single worker must execute the callback
 
     local lock, err = resty_lock:new(self.shm, self.resty_lock_opts)
@@ -635,17 +678,20 @@ function _M:get(key, opts, cb, ...)
 
     -- check for another worker's success at running the callback
 
-    data, err = get_shm_set_lru(self, key, namespaced_key, l1_serializer)
+    data, err, is_stale = get_shm_set_lru(self, key, namespaced_key,
+                                          shm_set_tries, l1_serializer)
     if err then
         return unlock_and_ret(lock, nil, err)
     end
 
-    if data == CACHE_MISS_SENTINEL_LRU then
-        return unlock_and_ret(lock, nil, nil, 2)
-    end
+    if not is_stale then
+        if data == CACHE_MISS_SENTINEL_LRU then
+            return unlock_and_ret(lock, nil, nil, 2)
+        end
 
-    if data ~= nil then
-        return unlock_and_ret(lock, data, nil, 2)
+        if data ~= nil then
+            return unlock_and_ret(lock, data, nil, 2)
+        end
     end
 
     -- data is nil, we are either the 1st worker to hold the lock, or
@@ -664,12 +710,15 @@ function _M:get(key, opts, cb, ...)
         return unlock_and_ret(lock, nil, "callback threw an error: " .. perr)
     end
 
-    data = perr
-
     if err then
         -- callback returned nil + err
-        return unlock_and_ret(lock, data, err)
+        --   * possibly because of failed I/O (is L3 down?)
+        -- return stale data and do not evict it, is is precious now, since
+        -- there is no way to retrieve it anymore!
+        return unlock_and_ret(lock, data or perr, err, is_stale)
     end
+
+    data = perr
 
     -- override ttl / neg_ttl
 
