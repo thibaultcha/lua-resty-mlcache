@@ -366,7 +366,49 @@ local function set_lru(self, key, value, ttl, neg_ttl, l1_serializer)
 end
 
 
-local function shm_set_retries(shm, dict, key, val, ttl, max_tries)
+local function marshall_for_shm(value, ttl, neg_ttl)
+    local at = now()
+
+    if value == nil then
+        return marshallers.shm_nil(at, neg_ttl), nil, true -- is_nil
+    end
+
+    -- serialize insertion time + Lua types for shm storage
+
+    local value_type = TYPES_LOOKUP[type(value)]
+
+    if not marshallers[value_type] then
+        error("cannot cache value of type " .. type(value))
+    end
+
+    local str_marshalled, err = marshallers[value_type](value)
+    if not str_marshalled then
+        return nil, "could not serialize value for lua_shared_dict insertion: "
+                    .. err
+    end
+
+    return marshallers.shm_value(str_marshalled, value_type, at, ttl)
+end
+
+
+local function set_shm(self, shm_key, value, ttl, neg_ttl, flags, shm_set_tries)
+    local shm_value, err, is_nil = marshall_for_shm(value, ttl, neg_ttl)
+    if not shm_value then
+        return nil, err
+    end
+
+    local shm = self.shm
+    local dict = self.dict
+
+    if is_nil then
+        ttl = neg_ttl
+
+        if self.dict_miss then
+            shm = self.shm_miss
+            dict = self.dict_miss
+        end
+    end
+
     -- we will call `set()` N times to work around potential shm fragmentation.
     -- when the shm is full, it will only evict about 30 to 90 items (via
     -- LRU), which could lead to a situation where `set()` still does not
@@ -376,10 +418,10 @@ local function shm_set_retries(shm, dict, key, val, ttl, max_tries)
     local tries = 0
     local ok, err
 
-    while tries < max_tries do
+    while tries < shm_set_tries do
         tries = tries + 1
 
-        ok, err = dict:set(key, val, ttl)
+        ok, err = dict:set(shm_key, shm_value, ttl, flags or 0)
         if ok or err and err ~= "no memory" then
             break
         end
@@ -401,52 +443,15 @@ local function shm_set_retries(shm, dict, key, val, ttl, max_tries)
 end
 
 
-local function set_shm(self, shm_key, value, ttl, neg_ttl, shm_set_tries)
-    local at = now()
-
-    if value == nil then
-        local shm_nil_marshalled = marshallers.shm_nil(at, neg_ttl)
-
-        local shm = self.shm_miss or self.shm
-        local dict = self.dict_miss or self.dict
-
-        -- we need to cache that this was a miss, and ensure cache hit for a
-        -- nil value
-        local ok, err = shm_set_retries(shm, dict, shm_key, shm_nil_marshalled,
-                                        neg_ttl, shm_set_tries)
-        if not ok then
-            return nil, err
-        end
-
-        return true
-    end
-
-    -- serialize insertion time + Lua types for shm storage
-
-    local value_type = TYPES_LOOKUP[type(value)]
-
-    if not marshallers[value_type] then
-        error("cannot cache value of type " .. type(value))
-    end
-
-    local str_marshalled, err = marshallers[value_type](value)
-    if not str_marshalled then
-        return nil, "could not serialize value for lua_shared_dict insertion: "
-                    .. err
-    end
-
-    local shm_marshalled = marshallers.shm_value(str_marshalled, value_type,
-                                                 at, ttl)
-
-    -- cache value in shm for currently-locked workers
-
-    local ok, err = shm_set_retries(self.shm, self.dict, shm_key,
-                                    shm_marshalled, ttl, shm_set_tries)
+local function set_shm_set_lru(self, key, shm_key, value, ttl, neg_ttl, flags,
+                               shm_set_tries, l1_serializer)
+    local ok, err = set_shm(self, shm_key, value, ttl, neg_ttl, flags,
+                            shm_set_tries)
     if not ok then
         return nil, err
     end
 
-    return true
+    return set_lru(self, key, value, ttl, neg_ttl, l1_serializer)
 end
 
 
@@ -682,23 +687,14 @@ function _M:get(key, opts, cb, ...)
         end
     end
 
-    -- set shm cache level
-
-    local ok, err = set_shm(self, namespaced_key, data, ttl, neg_ttl,
-                            shm_set_tries)
-    if not ok then
-        return unlock_and_ret(lock, nil, err)
-    end
-
-    -- set our own worker's LRU cache
-
-    data, err = set_lru(self, key, data, ttl, neg_ttl, l1_serializer)
+    data, err = set_shm_set_lru(self, key, namespaced_key, data,
+                                ttl, neg_ttl, nil, shm_set_tries, l1_serializer)
     if err then
         return unlock_and_ret(lock, nil, err)
     end
 
     if data == CACHE_MISS_SENTINEL_LRU then
-        return unlock_and_ret(lock, nil, nil, 3)
+        data = nil
     end
 
     -- unlock and return
@@ -785,7 +781,7 @@ function _M:set(key, opts, value)
             end
         end
 
-        local ok, err = set_shm(self, namespaced_key, value, ttl, neg_ttl,
+        local ok, err = set_shm(self, namespaced_key, value, ttl, neg_ttl, nil,
                                 shm_set_tries)
         if not ok then
             return nil, err
