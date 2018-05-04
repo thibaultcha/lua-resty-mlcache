@@ -81,6 +81,10 @@ local unmarshallers = {
         return str_value, tonumber(value_type), tonumber(at), tonumber(ttl)
     end,
 
+    [0] = function() -- nil
+        return nil
+    end,
+
     [1] = function(str) -- number
         return tonumber(str)
     end,
@@ -391,6 +395,18 @@ local function marshall_for_shm(value, ttl, neg_ttl)
 end
 
 
+local function unmarshall_from_shm(shm_v)
+    local str_serialized, value_type, at, ttl = unmarshallers.shm_value(shm_v)
+
+    local value, err = unmarshallers[value_type](str_serialized)
+    if err then
+        return nil, err
+    end
+
+    return value, nil, at, ttl
+end
+
+
 local function set_shm(self, shm_key, value, ttl, neg_ttl, flags, shm_set_tries)
     local shm_value, err, is_nil = marshall_for_shm(value, ttl, neg_ttl)
     if not shm_value then
@@ -470,7 +486,11 @@ local function get_shm_set_lru(self, key, shm_key, l1_serializer)
     end
 
     if v ~= nil then
-        local str_serialized, value_type, at, ttl = unmarshallers.shm_value(v)
+        local value, err, at, ttl = unmarshall_from_shm(v)
+        if err then
+            return nil, "could not deserialize value after lua_shared_dict " ..
+                        "retrieval: " .. err
+        end
 
         local remaining_ttl
         if ttl == 0 then
@@ -480,18 +500,6 @@ local function get_shm_set_lru(self, key, shm_key, l1_serializer)
         else
             -- compute elapsed time to get remaining ttl for LRU caching
             remaining_ttl = ttl - (now() - at)
-        end
-
-        -- value_type of 0 is a nil entry
-        if value_type == 0 then
-            return set_lru(self, key, nil, remaining_ttl, remaining_ttl,
-                           l1_serializer)
-        end
-
-        local value, err = unmarshallers[value_type](str_serialized)
-        if err then
-            return nil, "could not deserialize value after lua_shared_dict " ..
-                        "retrieval: " .. err
         end
 
         return set_lru(self, key, value, remaining_ttl, remaining_ttl,
@@ -728,20 +736,13 @@ function _M:peek(key)
     end
 
     if v ~= nil then
-        local str_serialized, value_type, at, ttl = unmarshallers.shm_value(v)
-
-        local remaining_ttl = ttl - (now() - at)
-
-        -- value_type of 0 is a nil entry
-        if value_type == 0 then
-            return remaining_ttl
-        end
-
-        local value, err = unmarshallers[value_type](str_serialized)
+        local value, err, at, ttl = unmarshall_from_shm(v)
         if err then
             return nil, "could not deserialize value after lua_shared_dict " ..
                         "retrieval: " .. err
         end
+
+        local remaining_ttl = ttl - (now() - at)
 
         return remaining_ttl, nil, value
     end
