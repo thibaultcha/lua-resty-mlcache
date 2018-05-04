@@ -219,6 +219,11 @@ holding the desired options for this instance. The possible options are:
   accepts fractional number parts, like `0.3`. A `neg_ttl` of `0` means the
   cached misses will never expire.
   **Default:** `5`.
+- `resurrect_ttl`: _optional_ number. When specified, the mlcache instance will
+  attempt to resurrect stale values when the L3 callback returns `nil, err`
+  (soft errors). More details are available for this option in the
+  [get()](#get) section. The unit is seconds, but accepts fractional number
+  parts, like `0.3`.
 - `lru`: a lua-resty-lrucache instance of your choice. If specified, mlcache
   will not instantiate an LRU. One can use this value to use the
   `resty.lrucache.pureffi` implementation of lua-resty-lrucache if desired.
@@ -319,9 +324,10 @@ Performs a cache lookup. This is the primary and most efficient method of this
 module. A typical pattern is to *not* call [set()](#set), and let [get()](#get)
 perform all the work.
 
-When it succeeds, it returns `value` and no error. **Because `nil` misses from
-the L3 callback are cached, `value` can be nil, hence one must rely on the
-second return value `err` to determine if this method succeeded or not**.
+When it succeeds, it returns `value` and no error. **Because `nil` values from
+the L3 callback are cached to signify misses, `value` can be nil, hence one
+must rely on the second return value `err` to determine if this method
+succeeded or not**.
 
 The third return value is a number which is set if no error was encountered.
 It indicated the level at which the value was fetched: `1` for L1, `2` for L2,
@@ -345,6 +351,31 @@ options:
   misses (when the L3 callback returns `nil`). The unit is seconds, but
   accepts fractional number parts, like `0.3`. A `neg_ttl` of `0` means the
   cached misses will never expire.
+  **Default:** inherited from the instance.
+- `resurrect_ttl`: _optional_ number. When specified, `get()` will attempt to
+  resurrect stale values when errors are encountered. Errors returned by the L3
+  callback (`nil, err`) are considered to be failures to fetch/refresh a value.
+  When such return values from the callback are seen by `get()`, and if the
+  stale value is still in memory, then `get()` will resurrect the stale value
+  for `resurrect_ttl` seconds. The error returned by `get()` will be logged at
+  the WARN level, but _not_ returned by `get()`.  Finally, the `hit_level`
+  return value will be `4` to signify that the served item is stale. When
+  `resurrect_ttl` is reached, `get()` will once again attempt to run the
+  callback. If by then, the callback returns an error again, the value is
+  resurrected once again, and so on. If the callback succeeds, the value is
+  refreshed and not marked as stale anymore. Due to current limitations within
+  the LRU cache module, `hit_level` will be `1` when stale values are upgraded
+  to the L1 (LRU) cache and retrieved from there.  Lua errors thrown by the
+  callback _do not_ trigger a resurrect, and are returned by `get()` as usual
+  (`nil, err`). When several workers time out while waiting for the worker
+  running the callback (e.g. because the datastore is timing out), then users
+  of this option will see a slight difference compared to the traditional
+  behavior of `get()`. Instead of returning `nil, err` (indicating a lock
+  timeout), `get()` will return the stale value (if available), no error, and
+  `hit_level` will be `4`. However, the value will not be resurrected (since
+  another worker is still running the callback). The unit is seconds, but
+  accepts fractional number parts, like `0.3`. This option **must** be greater
+  than `0`, to avoid stale values from being cached indefinitely.
   **Default:** inherited from the instance.
 - `shm_set_tries`: the number of tries for the lua_shared_dict `set()`
   operation. When the lua_shared_dict is full, it attempts to free up to 30
@@ -404,13 +435,17 @@ When called, `get()` follows the below steps:
     2. if the L2 cache does not have the value (L2 miss), it continues.
 3. creates a [lua-resty-lock], and ensures that a single worker will run the
    callback (other workers trying to access the same value will wait).
-4. a single worker runs the L3 callback.
-5. the callback returns (ex: it performed a database query), and the worker
-   sets the value in the L2 cache. It then sets it in its L1 cache as well
-   (as-is by default, or as returned by `l1_serializer` if specified).
-6. other workers that were trying to access the same value but were waiting
-   fetch the value from the L2 cache (they do not run the L3 callback) and
-   return it.
+4. a single worker runs the L3 callback (e.g. performs a database query)
+   1. the callback succeeds and returns a value: the value is set in the
+      L2 cache, then in the L1 cache as well (as-is by default, or as
+      returned by `l1_serializer` if specified).
+   2. the callback failed and returned `nil, err`:
+      a. if `resurrect_ttl` is specified, and if the stale value is still
+         available, it will be resurrected in the L2 cache.
+      b. otherwise, `get()` returns `nil, err`.
+5. other workers that were trying to access the same value but were waiting
+   are unlocked and fetch the value from the L2 cache (they do not run the L3
+   callback) and return it.
 
 Example:
 
