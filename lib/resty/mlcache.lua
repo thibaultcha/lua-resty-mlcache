@@ -727,7 +727,7 @@ function _M:get(key, opts, cb, ...)
 end
 
 
-function _M:peek(key)
+function _M:peek(key, stale)
     if type(key) ~= "string" then
         error("key must be a string", 2)
     end
@@ -737,18 +737,26 @@ function _M:peek(key)
     -- shm
     local namespaced_key = self.name .. key
 
-    local v, err = self.dict:get(namespaced_key)
-    if err then
+    local v, err, went_stale = self.dict:get_stale(namespaced_key)
+    if v == nil and err then
+        -- err can be 'flags' upon successful get_stale() calls, so we
+        -- also check v == nil
         return nil, "could not read from lua_shared_dict: " .. err
     end
 
     -- if we specified shm_miss, it might be a negative hit cached
     -- there
     if self.dict_miss and v == nil then
-        v, err = self.dict_miss:get(namespaced_key)
-        if err then
+        v, err, went_stale = self.dict_miss:get_stale(namespaced_key)
+        if v == nil and err then
+            -- err can be 'flags' upon successful get_stale() calls, so we
+            -- also check v == nil
             return nil, "could not read from lua_shared_dict: " .. err
         end
+    end
+
+    if went_stale and not stale then
+        return nil
     end
 
     if v ~= nil then
@@ -760,7 +768,7 @@ function _M:peek(key)
 
         local remaining_ttl = ttl - (now() - at)
 
-        return remaining_ttl, nil, value
+        return remaining_ttl, nil, value, went_stale
     end
 end
 

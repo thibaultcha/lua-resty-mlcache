@@ -357,3 +357,270 @@ GET /t
 [error]
 --- error_log eval
 qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):6 loop\]/
+
+
+
+=== TEST 9: peek() returns nil if a value expired
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache, err = mlcache.new("my_mlcache", "cache_shm")
+            if not cache then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            assert(cache:get("my_key", { ttl = 0.3 }, function()
+                return 123
+            end))
+
+            ngx.sleep(0.3)
+
+            local ttl, err, data, stale = cache:peek("my_key")
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("ttl: ", ttl)
+            ngx.say("data: ", data)
+            ngx.say("stale: ", stale)
+        }
+    }
+--- request
+GET /t
+--- response_body
+ttl: nil
+data: nil
+stale: nil
+--- no_error_log
+[error]
+
+
+
+=== TEST 10: peek() returns nil if a value expired in 'shm_miss'
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache, err = mlcache.new("my_mlcache", "cache_shm", {
+                shm_miss = "cache_shm_miss"
+            })
+            if not cache then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            local data, err = cache:get("my_key", { neg_ttl = 0.3 }, function()
+                return nil
+            end)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.sleep(0.3)
+
+            local ttl, err, data, stale = cache:peek("my_key")
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("ttl: ", ttl)
+            ngx.say("data: ", data)
+            ngx.say("stale: ", stale)
+        }
+    }
+--- request
+GET /t
+--- response_body
+ttl: nil
+data: nil
+stale: nil
+--- no_error_log
+[error]
+
+
+
+=== TEST 11: peek() accepts stale arg and returns stale values
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache, err = mlcache.new("my_mlcache", "cache_shm")
+            if not cache then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            assert(cache:get("my_key", { ttl = 0.3 }, function()
+                return 123
+            end))
+
+            ngx.sleep(0.3)
+
+            local ttl, err, data, stale = cache:peek("my_key", true)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("ttl: ", ttl)
+            ngx.say("data: ", data)
+            ngx.say("stale: ", stale)
+        }
+    }
+--- request
+GET /t
+--- response_body_like chomp
+ttl: -0\.\d+
+data: 123
+stale: true
+--- no_error_log
+[error]
+
+
+
+=== TEST 12: peek() accepts stale arg and returns stale values from 'shm_miss'
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache, err = mlcache.new("my_mlcache", "cache_shm", {
+                shm_miss = "cache_shm_miss"
+            })
+            if not cache then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            local data, err = cache:get("my_key", { neg_ttl = 0.3 }, function()
+                return nil
+            end)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.sleep(0.3)
+
+            local ttl, err, data, stale = cache:peek("my_key", true)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("ttl: ", ttl)
+            ngx.say("data: ", data)
+            ngx.say("stale: ", stale)
+        }
+    }
+--- request
+GET /t
+--- response_body_like chomp
+ttl: -0\.\d+
+data: nil
+stale: true
+--- no_error_log
+[error]
+
+
+
+=== TEST 13: peek() does not evict stale items from L2 shm
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
+                ttl = 0.3,
+            }))
+
+            local data, err = cache:get("key", nil, function()
+                return 123
+            end)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.sleep(0.3)
+
+            for i = 1, 3 do
+                remaining_ttl, err, data = cache:peek("key", true)
+                if err then
+                    ngx.log(ngx.ERR, err)
+                    return
+                end
+                ngx.say("remaining_ttl: ", remaining_ttl)
+                ngx.say("data: ", data)
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body_like chomp
+remaining_ttl: -\d\.\d+
+data: 123
+remaining_ttl: -\d\.\d+
+data: 123
+remaining_ttl: -\d\.\d+
+data: 123
+--- no_error_log
+[error]
+
+
+
+=== TEST 14: peek() does not evict stale negative data from L2 shm_miss
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
+                neg_ttl = 0.3,
+                shm_miss = "cache_shm_miss",
+            }))
+
+            local data, err = cache:get("key", nil, function()
+                return nil
+            end)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.sleep(0.3)
+
+            for i = 1, 3 do
+                remaining_ttl, err, data = cache:peek("key", true)
+                if err then
+                    ngx.log(ngx.ERR, err)
+                    return
+                end
+                ngx.say("remaining_ttl: ", remaining_ttl)
+                ngx.say("data: ", data)
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body_like chomp
+remaining_ttl: -\d\.\d+
+data: nil
+remaining_ttl: -\d\.\d+
+data: nil
+remaining_ttl: -\d\.\d+
+data: nil
+--- no_error_log
+[error]
