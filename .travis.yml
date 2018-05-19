@@ -24,11 +24,12 @@ env:
     - OPENRESTY_VER=1.11.2.4
     - OPENRESTY_VER=1.11.2.5
     - OPENRESTY_VER=1.13.6.1
+    - OPENRESTY_VER=1.13.6.2
     - LINT=1
 
 install:
   - mkdir -p download-cache
-  - if [ -z "$OPENRESTY_VER" ]; then export OPENRESTY_VER=1.13.6.1; fi
+  - if [ -z "$OPENRESTY_VER" ]; then export OPENRESTY_VER=1.13.6.2; fi
   - if [ ! -f download-cache/openresty-$OPENRESTY_VER.tar.gz ]; then wget -O download-cache/openresty-$OPENRESTY_VER.tar.gz http://openresty.org/download/openresty-$OPENRESTY_VER.tar.gz; fi
   - if [ ! -f download-cache/luarocks-$LUAROCKS_VER.tar.gz ]; then wget -O download-cache/luarocks-$LUAROCKS_VER.tar.gz https://luarocks.github.io/luarocks/releases/luarocks-$LUAROCKS_VER.tar.gz; fi
   - if [ ! -f download-cache/cpanm ]; then wget -O download-cache/cpanm https://cpanmin.us/; fi
