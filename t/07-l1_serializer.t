@@ -228,7 +228,46 @@ calls: 3
 
 
 
-=== TEST 6: l1_serializer is called in protected mode (L2 miss)
+=== TEST 6: l1_serializer is called on boolean false hits
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache, err = mlcache.new("my_mlcache", "cache_shm", {
+                l1_serializer = function(s)
+                    return string.format("transform_boolean(%q)", s)
+                end,
+            })
+            if not cache then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            local function cb()
+                return false
+            end
+
+            local data, err = cache:get("key", nil, cb)
+            if not data then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say(data)
+        }
+    }
+--- request
+GET /t
+--- response_body
+transform_boolean("false")
+--- no_error_log
+[error]
+
+
+
+=== TEST 7: l1_serializer is called in protected mode (L2 miss)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -262,7 +301,7 @@ l1_serializer threw an error: .*?: cannot transform
 
 
 
-=== TEST 7: l1_serializer is called in protected mode (L2 hit)
+=== TEST 8: l1_serializer is called in protected mode (L2 hit)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -302,7 +341,7 @@ l1_serializer threw an error: .*?: cannot transform
 
 
 
-=== TEST 8: l1_serializer is not called for L2+L3 misses (no record)
+=== TEST 9: l1_serializer is not called for L2+L3 misses (no record)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -361,7 +400,7 @@ l1_serializer called for L2 negative hit: false
 
 
 
-=== TEST 9: l1_serializer is not supposed to return a nil value
+=== TEST 10: l1_serializer is not supposed to return a nil value
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -392,7 +431,7 @@ l1_serializer returned a nil value
 
 
 
-=== TEST 10: l1_serializer can return nil + error
+=== TEST 11: l1_serializer can return nil + error
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -427,7 +466,7 @@ data: nil
 
 
 
-=== TEST 11: l1_serializer can be given as a get() argument
+=== TEST 12: l1_serializer can be given as a get() argument
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -462,7 +501,7 @@ transform("foo")
 
 
 
-=== TEST 12: l1_serializer as get() argument has precedence over the constructor one
+=== TEST 13: l1_serializer as get() argument has precedence over the constructor one
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -511,7 +550,7 @@ constructor("bar")
 
 
 
-=== TEST 13: get() validates l1_serializer is a function
+=== TEST 14: get() validates l1_serializer is a function
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -541,7 +580,7 @@ opts.l1_serializer must be a function
 
 
 
-=== TEST 14: set() calls l1_serializer
+=== TEST 15: set() calls l1_serializer
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -583,7 +622,49 @@ transform("value")
 
 
 
-=== TEST 15: l1_serializer as set() argument has precedence over the constructor one
+=== TEST 16: set() calls l1_serializer for boolean false values
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache, err = mlcache.new("my_mlcache", "cache_shm", {
+                ipc_shm = "ipc_shm",
+                l1_serializer = function(s)
+                    return string.format("transform_boolean(%q)", s)
+                end
+            })
+            if not cache then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            local ok, err = cache:set("key", nil, false)
+            if not ok then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            local value, err = cache:get("key", nil, error)
+            if not value then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say(value)
+        }
+    }
+--- request
+GET /t
+--- response_body
+transform_boolean("false")
+--- no_error_log
+[error]
+
+
+
+=== TEST 17: l1_serializer as set() argument has precedence over the constructor one
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -629,7 +710,7 @@ set_argument("value")
 
 
 
-=== TEST 16: set() validates l1_serializer is a function
+=== TEST 18: set() validates l1_serializer is a function
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
