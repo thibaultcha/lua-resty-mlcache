@@ -3,6 +3,8 @@
 use Test::Nginx::Socket::Lua;
 use Cwd qw(cwd);
 
+no_long_string();
+
 workers(2);
 
 #repeat_each(2);
@@ -1280,7 +1282,45 @@ hit level from shm: 2
 
 
 
-=== TEST 28: get() JITs when hit coming from LRU
+=== TEST 28: get() returns hit level for boolean false hits
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
+
+            local function cb()
+                return false
+            end
+
+            local _, _, hit_lvl = cache:get("key", nil, cb)
+            ngx.say("hit level from callback: ", hit_lvl)
+
+            _, _, hit_lvl = cache:get("key", nil, cb)
+            ngx.say("hit level from LRU: ", hit_lvl)
+
+            -- delete from LRU
+
+            cache.lru:delete("key")
+
+            _, _, hit_lvl = cache:get("key", nil, cb)
+            ngx.say("hit level from shm: ", hit_lvl)
+        }
+    }
+--- request
+GET /t
+--- response_body
+hit level from callback: 3
+hit level from LRU: 1
+hit level from shm: 2
+--- no_error_log
+[error]
+
+
+
+=== TEST 29: get() JITs when hit coming from LRU
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1310,7 +1350,7 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 
 
 
-=== TEST 29: get() JITs when hit of scalar value coming from shm
+=== TEST 30: get() JITs when hit of scalar value coming from shm
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1332,23 +1372,28 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
             end
 
             for i = 1, 10e2 do
-                local data = assert(cache:get("number", nil, cb_number))
+                local data, err, hit_lvl = assert(cache:get("number", nil, cb_number))
+                assert(err == nil)
                 assert(data == 123456)
+                assert(hit_lvl == (i == 1 and 3 or 2))
 
                 cache.lru:delete("number")
             end
 
             for i = 1, 10e2 do
-                local data = assert(cache:get("string", nil, cb_string))
+                local data, err, hit_lvl = assert(cache:get("string", nil, cb_string))
+                assert(err == nil)
                 assert(data == "hello")
+                assert(hit_lvl == (i == 1 and 3 or 2))
 
                 cache.lru:delete("string")
             end
 
             for i = 1, 10e2 do
-                local data, err = cache:get("bool", nil, cb_bool)
+                local data, err, hit_lvl = cache:get("bool", nil, cb_bool)
                 assert(err == nil)
                 assert(data == false)
+                assert(hit_lvl == (i == 1 and 3 or 2))
 
                 cache.lru:delete("bool")
             end
@@ -1361,15 +1406,15 @@ GET /t
 --- error_log eval
 [
     qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):18 loop\]/,
-    qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):25 loop\]/,
-    qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):32 loop\]/,
+    qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):27 loop\]/,
+    qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):36 loop\]/,
 ]
 --- no_error_log
 [error]
 
 
 
-=== TEST 30: get() JITs when hit of table value coming from shm
+=== TEST 31: get() JITs when hit of table value coming from shm
 --- SKIP: blocked until custom table serializer
 --- http_config eval: $::HttpConfig
 --- config
@@ -1403,7 +1448,7 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):18 loop\]/
 
 
 
-=== TEST 31: get() JITs when miss coming from LRU
+=== TEST 32: get() JITs when miss coming from LRU
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1434,7 +1479,7 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 
 
 
-=== TEST 32: get() JITs when miss coming from shm
+=== TEST 33: get() JITs when miss coming from shm
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1467,7 +1512,7 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 
 
 
-=== TEST 33: get() callback can return nil + err
+=== TEST 34: get() callback can return nil + err
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1509,7 +1554,7 @@ cb2 return values: foo an error occurred again
 
 
 
-=== TEST 34: get() callback's 3th return value can override the ttl
+=== TEST 35: get() callback's 3th return value can override the ttl
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1560,7 +1605,7 @@ in callback 2
 
 
 
-=== TEST 35: get() callback's 3th return value can override the neg_ttl
+=== TEST 36: get() callback's 3th return value can override the neg_ttl
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1611,7 +1656,7 @@ in callback 2
 
 
 
-=== TEST 36: get() ignores invalid callback 3th return value (not number, not positive)
+=== TEST 37: get() ignores invalid callback 3th return value (not number, not positive)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1690,7 +1735,7 @@ in positive callback
 
 
 
-=== TEST 37: get() passes 'resty_lock_opts' for L3 calls
+=== TEST 38: get() passes 'resty_lock_opts' for L3 calls
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1733,7 +1778,86 @@ was given 'opts.resty_lock_opts': true
 
 
 
-=== TEST 38: get() returns data even if failed to set in shm
+=== TEST 39: get() errors on lock timeout
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        access_by_lua_block {
+            ngx.shared.cache_shm:set(1, true, 0.2)
+            ngx.shared.cache_shm:set(2, true, 0.2)
+        }
+
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+            local cache_1 = assert(mlcache.new("my_mlcache", "cache_shm", {
+                ttl = 0.3
+            }))
+            local cache_2 = assert(mlcache.new("my_mlcache", "cache_shm", {
+                ttl = 0.3,
+                resty_lock_opts = {
+                    timeout = 0.2
+                }
+            }))
+
+            local function cb(delay, return_val)
+                if delay then
+                    ngx.sleep(delay)
+                end
+
+                return return_val or 123
+            end
+
+            -- cache in shm
+
+            local data, err, hit_lvl = cache_1:get("my_key", nil, cb)
+            assert(data == 123)
+            assert(err == nil)
+            assert(hit_lvl == 3)
+
+            -- make shm + LRU expire
+
+            ngx.sleep(0.3)
+
+            local t1 = ngx.thread.spawn(function()
+                -- trigger L3 callback again, but slow to return this time
+                cache_1:get("my_key", nil, cb, 0.3, 456)
+            end)
+
+            local t2 = ngx.thread.spawn(function()
+                -- make this mlcache wait on other's callback, and timeout
+                local data, err, hit_lvl = cache_2:get("my_key", nil, cb)
+                ngx.say("data: ", data)
+                ngx.say("err: ", err)
+                ngx.say("hit_lvl: ", hit_lvl)
+            end)
+
+            assert(ngx.thread.wait(t1, t2))
+
+            ngx.say()
+            ngx.say("-> subsequent get()")
+            data, err, hit_lvl = cache_2:get("my_key", nil, cb, nil, 123)
+            ngx.say("data: ", data)
+            ngx.say("err: ", err)
+            ngx.say("hit_lvl: ", hit_lvl)
+        }
+    }
+--- request
+GET /t
+--- response_body
+data: nil
+err: could not acquire callback lock: timeout
+hit_lvl: nil
+
+-> subsequent get()
+data: 456
+err: nil
+hit_lvl: 2
+--- no_error_log
+[error]
+
+
+
+=== TEST 40: get() returns data even if failed to set in shm
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1785,7 +1909,7 @@ qr/\[warn\] .*? could not write to lua_shared_dict 'cache_shm' after 3 tries \(n
 
 
 
-=== TEST 39: get() errors on invalid opts.shm_set_tries
+=== TEST 41: get() errors on invalid opts.shm_set_tries
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1825,7 +1949,7 @@ opts.shm_set_tries must be >= 1
 
 
 
-=== TEST 40: get() with default shm_set_tries to LRU evict items when a large value is being cached
+=== TEST 42: get() with default shm_set_tries to LRU evict items when a large value is being cached
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1896,7 +2020,7 @@ callback was called: 1 times
 
 
 
-=== TEST 41: get() respects instance opts.shm_set_tries to LRU evict items when a large value is being cached
+=== TEST 43: get() respects instance opts.shm_set_tries to LRU evict items when a large value is being cached
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1969,7 +2093,7 @@ callback was called: 1 times
 
 
 
-=== TEST 42: get() accepts opts.shm_set_tries to LRU evict items when a large value is being cached
+=== TEST 44: get() accepts opts.shm_set_tries to LRU evict items when a large value is being cached
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -2042,7 +2166,7 @@ callback was called: 1 times
 
 
 
-=== TEST 43: get() caches data in L1 LRU even if failed to set in shm
+=== TEST 45: get() caches data in L1 LRU even if failed to set in shm
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
