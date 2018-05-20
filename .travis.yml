@@ -19,7 +19,7 @@ env:
     - JOBS=2
     - LUAROCKS_VER=2.4.3
   matrix:
-    - OPENRESTY_VER=1.11.2.2
+    #- OPENRESTY_VER=1.11.2.2
     - OPENRESTY_VER=1.11.2.3
     - OPENRESTY_VER=1.11.2.4
     - OPENRESTY_VER=1.11.2.5
