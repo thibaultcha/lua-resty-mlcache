@@ -407,7 +407,8 @@ local function unmarshall_from_shm(shm_v)
 end
 
 
-local function set_shm(self, shm_key, value, ttl, neg_ttl, flags, shm_set_tries)
+local function set_shm(self, shm_key, value, ttl, neg_ttl, flags, shm_set_tries,
+                       throw_no_mem)
     local shm_value, err, is_nil = marshall_for_shm(value, ttl, neg_ttl)
     if not shm_value then
         return nil, err
@@ -444,7 +445,7 @@ local function set_shm(self, shm_key, value, ttl, neg_ttl, flags, shm_set_tries)
     end
 
     if not ok then
-        if err ~= "no memory" then
+        if err ~= "no memory" or throw_no_mem then
             return nil, "could not write to lua_shared_dict '" .. shm
                         .. "': " .. err
         end
@@ -460,9 +461,10 @@ end
 
 
 local function set_shm_set_lru(self, key, shm_key, value, ttl, neg_ttl, flags,
-                               shm_set_tries, l1_serializer)
+                               shm_set_tries, l1_serializer, throw_no_mem)
+
     local ok, err = set_shm(self, shm_key, value, ttl, neg_ttl, flags,
-                            shm_set_tries)
+                            shm_set_tries, throw_no_mem)
     if not ok then
         return nil, err
     end
@@ -766,8 +768,6 @@ function _M:set(key, opts, value)
                                                                       opts)
         local namespaced_key = self.name .. key
 
-        set_lru(self, key, value, ttl, neg_ttl, l1_serializer)
-
         if self.dict_miss then
             -- since we specified a separate shm for negative caches, we
             -- must make sure that we clear any value that may have been
@@ -782,9 +782,10 @@ function _M:set(key, opts, value)
             end
         end
 
-        local ok, err = set_shm(self, namespaced_key, value, ttl, neg_ttl, nil,
-                                shm_set_tries)
-        if not ok then
+        local _, err = set_shm_set_lru(self, key, namespaced_key, value, ttl,
+                                       neg_ttl, nil, shm_set_tries,
+                                       l1_serializer, true)
+        if err then
             return nil, err
         end
     end

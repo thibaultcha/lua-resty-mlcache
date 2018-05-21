@@ -5,7 +5,7 @@ use Cwd qw(cwd);
 
 #repeat_each(2);
 
-plan tests => repeat_each() * (blocks() * 3) + 1;
+plan tests => repeat_each() * (blocks() * 3) + 2;
 
 my $pwd = cwd();
 
@@ -497,7 +497,101 @@ value from get() after set(): 123
 
 
 
-=== TEST 11: set() calls broadcast() with invalidated key
+=== TEST 11: set() returns 'no memory' errors upon fragmentation in the shm
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
+                ipc_shm = "ipc_shm",
+            }))
+
+            -- fill shm
+
+            local idx = 0
+
+            while true do
+                local ok, err, forcible = ngx.shared.cache_shm:set(idx, true)
+                if not ok then
+                    ngx.log(ngx.ERR, err)
+                    return
+                end
+
+                if forcible then
+                    break
+                end
+
+                idx = idx + 1
+            end
+
+            -- set large value
+
+            local ok, err = cache:set("my_key", { shm_set_tries = 1 }, string.rep("a", 2^10))
+            ngx.say(ok)
+            ngx.say(err)
+        }
+    }
+--- request
+GET /t
+--- response_body
+nil
+could not write to lua_shared_dict 'cache_shm': no memory
+--- no_error_log
+[error]
+[warn]
+
+
+
+=== TEST 12: set() does not set LRU upon shm insertion error
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
+                ipc_shm = "ipc_shm",
+            }))
+
+            -- fill shm
+
+            local idx = 0
+
+            while true do
+                local ok, err, forcible = ngx.shared.cache_shm:set(idx, true)
+                if not ok then
+                    ngx.log(ngx.ERR, err)
+                    return
+                end
+
+                if forcible then
+                    break
+                end
+
+                idx = idx + 1
+            end
+
+            -- set large value
+
+            local ok = cache:set("my_key", { shm_set_tries = 1 }, string.rep("a", 2^10))
+            assert(ok == nil)
+
+            local data = cache.lru:get("my_key")
+            ngx.say(data)
+        }
+    }
+--- request
+GET /t
+--- response_body
+nil
+--- no_error_log
+[error]
+
+
+
+=== TEST 13: set() calls broadcast() with invalidated key
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
