@@ -1,4 +1,4 @@
-# vim:set ts=4 sts=4 sw=4 et:
+# vim:set ts=4 sts=4 sw=4 et ft=:
 
 use Test::Nginx::Socket::Lua;
 use Cwd qw(cwd);
