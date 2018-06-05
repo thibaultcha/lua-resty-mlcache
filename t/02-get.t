@@ -2,47 +2,8 @@
 
 use Test::Nginx::Socket::Lua;
 use Cwd qw(cwd);
-
-sub get_openresty_canon_version (@) {
-    sprintf "%d.%03d%03d%03d", $_[0], $_[1], $_[2], $_[3];
-}
-
-sub get_openresty_version () {
-    my $NginxBinary = $ENV{TEST_NGINX_BINARY} || 'nginx';
-    my $out = `$NginxBinary -V 2>&1`;
-
-    if (!defined $out || $? != 0) {
-        bail_out("Failed to get the version of the OpenResty in PATH");
-        die;
-    }
-    if ($out =~ m{openresty[^/]*/(\d+)\.(\d+)\.(\d+)\.(\d+)}s) {
-        return get_openresty_canon_version($1, $2, $3, $4);
-    }
-    if ($out =~ m{nginx[^/]*/(\d+)\.(\d+)\.(\d+)}s) {
-        return;
-    }
-
-    bail_out("Failed to parse the output of \"nginx -V\": $out\n");
-    die;
-}
-
-sub skip_openresty {
-    my ($op, $ver) = @_;
-    my $OpenrestyVersion = get_openresty_version();
-
-    if ($ver =~ m{(\d+)\.(\d+)\.(\d+)\.(\d+)}s) {
-        $ver = get_openresty_canon_version($1, $2, $3, $4);
-    } else {
-        bail_out("Invalid skip_openresty() arg: $ver");
-        die;
-    }
-
-    if (defined $OpenrestyVersion and eval "$OpenrestyVersion $op $ver") {
-        return 1;
-    }
-
-    return;
-}
+use lib '.';
+use t::Util;
 
 no_long_string();
 
@@ -1324,7 +1285,7 @@ hit level from shm: 2
 
 
 === TEST 28: get() returns hit level for boolean false hits
---- skip_eval: 3: main::skip_openresty('<', '1.11.2.3')
+--- skip_eval: 3: t::Util::skip_openresty('<', '1.11.2.3')
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
