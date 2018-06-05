@@ -233,6 +233,10 @@ function _M.new(name, shm, opts)
         if opts.shm_miss ~= nil and type(opts.shm_miss) ~= "string" then
             error("opts.shm_miss must be a string", 2)
         end
+
+        if opts.shm_locks ~= nil and type(opts.shm_locks) ~= "string" then
+            error("opts.shm_locks must be a string", 2)
+        end
     else
         opts = {}
     end
@@ -251,12 +255,21 @@ function _M.new(name, shm, opts)
         end
     end
 
+    if opts.shm_locks then
+        local dict_locks = shared[opts.shm_locks]
+        if not dict_locks then
+            return nil, "no such lua_shared_dict for opts.shm_locks: "
+                        .. opts.shm_locks
+        end
+    end
+
     local self          = {
         name            = name,
         dict            = dict,
         shm             = shm,
         dict_miss       = dict_miss,
         shm_miss        = opts.shm_miss,
+        shm_locks       = opts.shm_locks or shm,
         ttl             = opts.ttl     or 30,
         neg_ttl         = opts.neg_ttl or 5,
         lru_size        = opts.lru_size or 100,
@@ -638,7 +651,7 @@ function _M:get(key, opts, cb, ...)
     -- not in shm either
     -- single worker must execute the callback
 
-    local lock, err = resty_lock:new(self.shm, self.resty_lock_opts)
+    local lock, err = resty_lock:new(self.shm_locks, self.resty_lock_opts)
     if not lock then
         return nil, "could not create lock: " .. err
     end

@@ -238,6 +238,14 @@ holding the desired options for this instance. The possible options are:
 - `resty_lock_opts`: options for [lua-resty-lock] instances. When mlcache runs
   the L3 callback, it uses lua-resty-lock to ensure that a single worker runs
   the provided callback.
+- `shm_locks`: _optional_ string. The name of a `lua_shared_dict`. When
+  specified, lua-resty-lock will use this shared dict to store its locks. This
+  option can help reducing cache churning: when the L2 cache (shm) is full,
+  every insertion (such as locks created by concurrent accesses triggering L3
+  callbacks) purges the oldest 30 accessed items. These purged items are most
+  likely to be previously (and valuable) cached values. By isolating locks in a
+  separate shared dict, workloads experiencing cache churning can mitigate this
+  effect.
 - `l1_serializer`: an _optional_ function. Its signature and accepted values
   are documented under the [get()](#get) method, along with an example.  If
   specified, this function will be called by each worker every time the L1 LRU
