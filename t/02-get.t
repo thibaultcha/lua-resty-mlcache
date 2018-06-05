@@ -129,7 +129,7 @@ opts must be a table
 
 
 
-=== TEST 4: get() calls callback in protected mode
+=== TEST 4: get() calls callback in protected mode with stack traceback
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -154,8 +154,11 @@ opts must be a table
     }
 --- request
 GET /t
---- response_body_like
+--- response_body_like chomp
 callback threw an error: .*? oops
+stack traceback:
+\s+\[C\]: in function 'error'
+\s+content_by_lua\(nginx\.conf:\d+\):\d+: in function
 --- no_error_log
 [error]
 

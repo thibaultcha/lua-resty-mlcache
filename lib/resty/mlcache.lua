@@ -10,7 +10,8 @@ local fmt          = string.format
 local sub          = string.sub
 local find         = string.find
 local type         = type
-local pcall        = pcall
+local xpcall       = xpcall
+local traceback    = debug.traceback
 local error        = error
 local tostring     = tostring
 local tonumber     = tonumber
@@ -674,7 +675,7 @@ function _M:get(key, opts, cb, ...)
     -- still not in shm, we are the 1st worker to hold the lock, and thus
     -- responsible for running the callback
 
-    local pok, perr, err, new_ttl = pcall(cb, ...)
+    local pok, perr, err, new_ttl = xpcall(cb, traceback, ...)
     if not pok then
         return unlock_and_ret(lock, nil, "callback threw an error: " .. perr)
     end
