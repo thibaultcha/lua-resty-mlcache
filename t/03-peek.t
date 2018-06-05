@@ -2,6 +2,8 @@
 
 use Test::Nginx::Socket::Lua;
 use Cwd qw(cwd);
+use lib '.';
+use t::Util;
 
 workers(2);
 
@@ -202,6 +204,7 @@ ttl: 18
 
 
 === TEST 5: peek() returns the value if a key has been fetched before
+--- skip_eval: 3: t::Util::skip_openresty('>=', '1.13.6.1')
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -261,7 +264,50 @@ ttl: \d* nil_val: nil
 
 
 
-=== TEST 6: peek() returns the value if shm_miss is specified
+=== TEST 6: peek() returns no value for recent OpenResty versions
+--- skip_eval: 3: t::Util::skip_openresty('<', '1.13.6.1')
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache, err = mlcache.new("my_mlcache", "cache_shm")
+            if not cache then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            local function cb_number()
+                return 123
+            end
+
+            local val, err = cache:get("my_key", nil, cb_number)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            local ttl, err, val = cache:peek("my_key")
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("ttl: ", math.ceil(ttl), " val: ", val)
+        }
+    }
+--- request
+GET /t
+--- response_body_like
+ttl: \d* val: nil
+--- no_error_log
+[error]
+
+
+
+=== TEST 7: peek() returns the value if shm_miss is specified
+--- skip_eval: 3: t::Util::skip_openresty('>=', '1.13.6.1')
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -300,7 +346,7 @@ ttl: \d* nil_val: nil
 
 
 
-=== TEST 7: peek() JITs on hit
+=== TEST 8: peek() JITs on hit
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -332,7 +378,7 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):13 loop\]/
 
 
 
-=== TEST 8: peek() JITs on miss
+=== TEST 9: peek() JITs on miss
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {

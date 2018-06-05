@@ -20,6 +20,12 @@ local ngx_log      = ngx.log
 local WARN         = ngx.WARN
 
 
+local has_shm_ttl
+if ngx.config.ngx_lua_version >= 10011 then
+    has_shm_ttl = true
+end
+
+
 local CACHE_MISS_SENTINEL_LRU = {}
 local SHM_SET_DEFAULT_TRIES = 3
 local LOCK_KEY_PREFIX = "lua-resty-mlcache:lock:"
@@ -713,40 +719,65 @@ function _M:get(key, opts, cb, ...)
 end
 
 
-function _M:peek(key)
-    if type(key) ~= "string" then
-        error("key must be a string", 2)
+if has_shm_ttl then
+    function _M:peek(key)
+        if type(key) ~= "string" then
+            error("key must be a string", 2)
+        end
+
+        local namespaced_key = self.name .. key
+
+        local ttl, err = self.dict:ttl(namespaced_key)
+        if not ttl and err ~= "not found" then
+            return nil, "could not read from lua_shared_dict: " .. err
+        end
+
+        if self.dict_miss and ttl == nil then
+            ttl, err = self.dict_miss:ttl(namespaced_key)
+            if not ttl and err ~= "not found" then
+                return nil, "could not read from lua_shared_dict: " .. err
+            end
+        end
+
+        return ttl
     end
 
-    -- restrict this key to the current namespace, so we isolate this
-    -- mlcache instance from potential other instances using the same
-    -- shm
-    local namespaced_key = self.name .. key
+else
+    function _M:peek(key)
+        if type(key) ~= "string" then
+            error("key must be a string", 2)
+        end
 
-    local v, err = self.dict:get(namespaced_key)
-    if err then
-        return nil, "could not read from lua_shared_dict: " .. err
-    end
+        -- restrict this key to the current namespace, so we isolate this
+        -- mlcache instance from potential other instances using the same
+        -- shm
+        local namespaced_key = self.name .. key
 
-    -- if we specified shm_miss, it might be a negative hit cached
-    -- there
-    if self.dict_miss and v == nil then
-        v, err = self.dict_miss:get(namespaced_key)
+        local v, err = self.dict:get(namespaced_key)
         if err then
             return nil, "could not read from lua_shared_dict: " .. err
         end
-    end
 
-    if v ~= nil then
-        local value, err, at, ttl = unmarshall_from_shm(v)
-        if err then
-            return nil, "could not deserialize value after lua_shared_dict " ..
-                        "retrieval: " .. err
+        -- if we specified shm_miss, it might be a negative hit cached
+        -- there
+        if self.dict_miss and v == nil then
+            v, err = self.dict_miss:get(namespaced_key)
+            if err then
+                return nil, "could not read from lua_shared_dict: " .. err
+            end
         end
 
-        local remaining_ttl = ttl - (now() - at)
+        if v ~= nil then
+            local value, err, at, ttl = unmarshall_from_shm(v)
+            if err then
+                return nil, "could not deserialize value after " ..
+                            "lua_shared_dict retrieval: " .. err
+            end
 
-        return remaining_ttl, nil, value
+            local remaining_ttl = ttl - (now() - at)
+
+            return remaining_ttl, nil, value
+        end
     end
 end
 
