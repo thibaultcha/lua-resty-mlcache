@@ -1,6 +1,7 @@
 # Table of Contents
 
 - [Unreleased](#unreleased)
+- [2.1.0](#2.1.0)
 - [2.0.2](#2.0.2)
 - [2.0.1](#2.0.1)
 - [2.0.0](#2.0.0)
@@ -9,7 +10,30 @@
 
 ## Unreleased
 
-Diff: [2.0.2...master]
+Diff: [2.1.0...master]
+
+[Back to TOC](#table-of-contents)
+
+## [2.1.0]
+
+> Released on: 2018/06/14
+
+#### Added
+
+- Implement a new `shm_locks` option. This option receives the name of a
+  lua_shared_dict, and, when specified, the mlcache instance will store
+  lua-resty-lock objects in it instead of storing them in the cache hits
+  lua_shared_dict. This can help reducing LRU churning in some workloads.
+  [#55](https://github.com/thibaultcha/lua-resty-mlcache/pull/55)
+- Provide stack traceback in `err` return value when the L3 callback throws an
+  error.
+  [#56](https://github.com/thibaultcha/lua-resty-mlcache/pull/56)
+
+#### Fixed
+
+- Ensure `no memory` errors returned by shm insertions are properly returned
+  by `set()`.
+  [#53](https://github.com/thibaultcha/lua-resty-mlcache/pull/53)
 
 [Back to TOC](#table-of-contents)
 
@@ -105,7 +129,8 @@ Initial release.
 
 [Back to TOC](#table-of-contents)
 
-[2.0.2...master]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.0.2...master
+[2.1.0...master]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.1.0...master
+[2.1.0]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.0.2...2.1.0
 [2.0.2]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.0.1...2.0.2
 [2.0.1]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.0.0...2.0.1
 [2.0.0]: https://github.com/thibaultcha/lua-resty-mlcache/compare/1.0.1...2.0.0
