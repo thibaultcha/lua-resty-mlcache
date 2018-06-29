@@ -1,6 +1,7 @@
 # Table of Contents
 
 - [Unreleased](#unreleased)
+- [2.2.0](#2.2.0)
 - [2.1.0](#2.1.0)
 - [2.0.2](#2.0.2)
 - [2.0.1](#2.0.1)
@@ -10,7 +11,22 @@
 
 ## Unreleased
 
-Diff: [2.1.0...master]
+Diff: [2.2.0...master]
+
+[Back to TOC](#table-of-contents)
+
+## [2.2.0]
+
+> Released on: 2018/06/29
+
+#### Added
+
+- Implement a new `resurrect_ttl` option. When specified, `get()` will behave
+  in a more resilient way upon errors, and in particular callback errors.
+  [#52](https://github.com/thibaultcha/lua-resty-mlcache/pull/52)
+- New `stale` argument to `peek()`. When specified, `peek()` will return stale
+  shm values.
+  [#52](https://github.com/thibaultcha/lua-resty-mlcache/pull/52)
 
 [Back to TOC](#table-of-contents)
 
@@ -129,7 +145,8 @@ Initial release.
 
 [Back to TOC](#table-of-contents)
 
-[2.1.0...master]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.1.0...master
+[2.2.0...master]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.2.0...master
+[2.2.0]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.1.0...2.2.0
 [2.1.0]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.0.2...2.1.0
 [2.0.2]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.0.1...2.0.2
 [2.0.1]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.0.0...2.0.1
