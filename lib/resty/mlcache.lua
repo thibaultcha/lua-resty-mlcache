@@ -764,6 +764,9 @@ function _M:get(key, opts, cb, ...)
     if err then
         -- callback returned nil + err
 
+        -- be resilient in case callbacks return wrong error type
+        err = tostring(err)
+
         -- no stale data nor desire to resurrect it
         if not went_stale or not resurrect_ttl then
             return unlock_and_ret(lock, perr, err)

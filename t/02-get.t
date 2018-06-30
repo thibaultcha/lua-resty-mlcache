@@ -1518,7 +1518,7 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 
 
 
-=== TEST 34: get() callback can return nil + err
+=== TEST 34: get() callback can return nil + err (string)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1530,8 +1530,6 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
             local function cb()
                 return nil, "an error occurred"
             end
-
-            -- cache our value (runs cb)
 
             local data, err = cache:get("1", nil, cb)
             if err then
@@ -1560,7 +1558,79 @@ cb2 return values: foo an error occurred again
 
 
 
-=== TEST 35: get() callback's 3th return value can override the ttl
+=== TEST 35: get() callback can return nil + err (non-string) safely
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
+
+            local function cb()
+                return nil, { err = "an error occurred" } -- invalid usage
+            end
+
+            local data, err = cache:get("1", nil, cb)
+            if err then
+                ngx.say("cb return values: ", data, " ", err)
+            end
+
+            local function cb2()
+                -- we will return "foo" to users as well from get(), and
+                -- not just nil, if they wish so.
+                return "foo", { err = "an error occurred again" } -- invalid usage
+            end
+
+            data, err = cache:get("2", nil, cb2)
+            if err then
+                ngx.say("cb2 return values: ", data, " ", err)
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body_like chomp
+cb return values: nil table: 0x[[:xdigit:]]+
+cb2 return values: foo table: 0x[[:xdigit:]]+
+--- no_error_log
+[error]
+
+
+
+=== TEST 36: get() callback can return nil + err (table) and will call __tostring
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
+
+            local mt = {
+                __tostring = function()
+                    return "hello from __tostring"
+                end
+            }
+
+            local function cb()
+                return nil, setmetatable({}, mt)
+            end
+
+            local data, err = cache:get("1", nil, cb)
+            if err then
+                ngx.say("cb return values: ", data, " ", err)
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body
+cb return values: nil hello from __tostring
+--- no_error_log
+[error]
+
+
+
+=== TEST 37: get() callback's 3th return value can override the ttl
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1611,7 +1681,7 @@ in callback 2
 
 
 
-=== TEST 36: get() callback's 3th return value can override the neg_ttl
+=== TEST 38: get() callback's 3th return value can override the neg_ttl
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1662,7 +1732,7 @@ in callback 2
 
 
 
-=== TEST 37: get() ignores invalid callback 3th return value (not number, not positive)
+=== TEST 39: get() ignores invalid callback 3th return value (not number, not positive)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1741,7 +1811,7 @@ in positive callback
 
 
 
-=== TEST 38: get() passes 'resty_lock_opts' for L3 calls
+=== TEST 40: get() passes 'resty_lock_opts' for L3 calls
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1784,7 +1854,7 @@ was given 'opts.resty_lock_opts': true
 
 
 
-=== TEST 39: get() errors on lock timeout
+=== TEST 41: get() errors on lock timeout
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1863,7 +1933,7 @@ hit_lvl: 2
 
 
 
-=== TEST 40: get() returns data even if failed to set in shm
+=== TEST 42: get() returns data even if failed to set in shm
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1915,7 +1985,7 @@ qr/\[warn\] .*? could not write to lua_shared_dict 'cache_shm' after 3 tries \(n
 
 
 
-=== TEST 41: get() errors on invalid opts.shm_set_tries
+=== TEST 43: get() errors on invalid opts.shm_set_tries
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1955,7 +2025,7 @@ opts.shm_set_tries must be >= 1
 
 
 
-=== TEST 42: get() with default shm_set_tries to LRU evict items when a large value is being cached
+=== TEST 44: get() with default shm_set_tries to LRU evict items when a large value is being cached
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -2026,7 +2096,7 @@ callback was called: 1 times
 
 
 
-=== TEST 43: get() respects instance opts.shm_set_tries to LRU evict items when a large value is being cached
+=== TEST 45: get() respects instance opts.shm_set_tries to LRU evict items when a large value is being cached
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -2099,7 +2169,7 @@ callback was called: 1 times
 
 
 
-=== TEST 44: get() accepts opts.shm_set_tries to LRU evict items when a large value is being cached
+=== TEST 46: get() accepts opts.shm_set_tries to LRU evict items when a large value is being cached
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -2172,7 +2242,7 @@ callback was called: 1 times
 
 
 
-=== TEST 45: get() caches data in L1 LRU even if failed to set in shm
+=== TEST 47: get() caches data in L1 LRU even if failed to set in shm
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {

@@ -3,7 +3,7 @@
 use Test::Nginx::Socket::Lua;
 use Cwd qw(cwd);
 
-plan tests => repeat_each() * (blocks() * 3 + 2);
+plan tests => repeat_each() * (blocks() * 3 + 3);
 
 my $pwd = cwd();
 
@@ -924,3 +924,42 @@ err: some error
 hit_lvl: nil
 --- no_error_log
 [error]
+
+
+
+=== TEST 13: get() callback can return nil + err (non-string) safely with opts.resurrect_ttl
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
+                ttl = 0.3,
+                resurrect_ttl = 1,
+            }))
+
+            local data, err = cache:get("1", nil, function() return 123 end)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.sleep(0.3)
+
+            local data, err = cache:get("1", nil, function() return nil, {} end)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("cb return values: ", data, " ", err)
+        }
+    }
+--- request
+GET /t
+--- response_body
+cb return values: 123 nil
+--- no_error_log
+[error]
+--- error_log eval
+qr/\[warn\] .*? callback returned an error \(table: 0x[[:xdigit:]]+\)/
