@@ -533,6 +533,13 @@ local function get_shm_set_lru(self, key, shm_key, l1_serializer)
         else
             -- compute elapsed time to get remaining ttl for LRU caching
             remaining_ttl = ttl - (now() - at)
+
+            -- In this case the value is actually expired, but still in the
+            -- shared dict because its expiration is not always accurate.
+            -- Consider the value as stale and fetch a new one.
+            if remaining_ttl <= 0 then
+               return nil, nil, v
+            end
         end
 
         value, err = set_lru(self, key, value, remaining_ttl, remaining_ttl,

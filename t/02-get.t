@@ -2303,3 +2303,58 @@ sleeping...
 is stale: true
 --- no_error_log
 [error]
+
+
+
+=== TEST 48: get() doesn't cache the entries forever in the LRU cache
+This tests a very speicfic race condition that occured after a shared hit: if
+the remaining TTL happened to be exactly 0, the entry was cached forever
+
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            -- we need very accrurate timing here, so mock ngx.now to return
+            -- predictible values
+            local forced_now = ngx.now()
+            function ngx.now()
+                return forced_now
+            end
+
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
+                ttl = 5,
+            }))
+
+            local data = cache:get("key", nil, function()
+                return 42
+            end)
+            assert(data == 42, "initial value error: 42 != " .. tostring(data))
+
+            -- drop the value from the worker cache to simulate a request from
+            -- another worker
+            cache.lru:delete("key")
+
+            -- advance of 5 seconds in the future and simulate another :get
+            -- call, The shared cache entry will still be alive (as its clock
+            -- in not faked) but will appear with a TTL of 0 to mlcache.
+            -- This can happenn in practice as the expiration on shdict doesn't
+            -- seem 100% accurate.
+            forced_now = forced_now + 5
+            data = cache:get("key", nil, function()
+                return 45
+            end)
+            assert(data == 45, "expired value error: 45 != " .. tostring(data))
+
+            ngx.say("OK")
+        }
+    }
+
+--- request
+GET /t
+
+--- response_body
+OK
+--- no_error_log
+[error]
