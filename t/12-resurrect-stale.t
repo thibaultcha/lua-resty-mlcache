@@ -976,3 +976,70 @@ cb return values: 123 nil
 [error]
 --- error_log eval
 qr/\[warn\] .*? callback returned an error \(table: 0x[[:xdigit:]]+\)/
+
+
+
+=== TEST 14: get() returns stale hit_lvl when retrieved from shm on last ms (see GH PR #58)
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local forced_now = ngx.now()
+            ngx.now = function()
+                return forced_now
+            end
+
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
+                ttl = 0.2,
+                resurrect_ttl = 0.2,
+            }))
+
+            local cb_called = 0
+
+            local function cb()
+                cb_called = cb_called + 1
+
+                if cb_called == 1 then
+                    return 42
+                end
+
+                return nil, "some error causing a resurrect"
+            end
+
+            local data, err = cache:get("key", nil, cb)
+            assert(data == 42, err or "invalid data value: " .. data)
+
+            -- cause a resurrect in L2 shm
+            ngx.sleep(0.201)
+            forced_now = forced_now + 0.201
+
+            local data, err, hit_lvl = cache:get("key", nil, cb)
+            assert(data == 42, err or "invalid data value: " .. data)
+            assert(hit_lvl == 4, "hit_lvl should be 4 (resurrected data), got: " .. hit_lvl)
+
+            -- value is now resurrected
+
+            -- drop L1 cache value
+            cache.lru:delete("key")
+
+            -- advance 0.2 second in the future, and simulate another :get()
+            -- call; the L2 shm entry will still be alive (as its clock is
+            -- not faked), but mlcache will compute a remaining_ttl of 0;
+            -- in such cases we should still see the stale flag returned
+            -- as hit_lvl
+            forced_now = forced_now + 0.2
+
+            local data, err, hit_lvl = cache:get("key", nil, cb)
+            assert(data == 42, err or "invalid data value: " .. data)
+
+            ngx.say("+0.200s after resurrect hit_lvl: ", hit_lvl)
+        }
+    }
+--- request
+GET /t
+--- response_body
++0.200s after resurrect hit_lvl: 4
+--- no_error_log
+[error]

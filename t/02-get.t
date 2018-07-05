@@ -2303,3 +2303,68 @@ sleeping...
 is stale: true
 --- no_error_log
 [error]
+
+
+
+=== TEST 48: get() does not cache value in LRU indefinitely when retrieved from shm on last ms (see GH PR #58)
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local forced_now = ngx.now()
+            ngx.now = function()
+                return forced_now
+            end
+
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
+                ttl = 0.2,
+            }))
+
+            local function cb(v)
+                return v or 42
+            end
+
+            local data, err = cache:get("key", nil, cb)
+            assert(data == 42, err or "invalid data value: " .. data)
+
+            -- drop L1 cache value
+            cache.lru:delete("key")
+
+            -- advance 0.2 second in the future, and simulate another :get()
+            -- call; the L2 shm entry will still be alive (as its clock is
+            -- not faked), but mlcache will compute a remaining_ttl of 0;
+            -- In such cases, we should _not_ cache the value indefinitely in
+            -- the L1 LRU cache.
+            forced_now = forced_now + 0.2
+
+            local data, err, hit_lvl = cache:get("key", nil, cb)
+            assert(data == 42, err or "invalid data value: " .. data)
+
+            ngx.say("+0.200s hit_lvl: ", hit_lvl)
+
+            -- the value is not cached in LRU (too short ttl anyway)
+
+            data, err, hit_lvl = cache:get("key", nil, cb)
+            assert(data == 42, err or "invalid data value: " .. data)
+
+            ngx.say("+0.200s hit_lvl: ", hit_lvl)
+
+            -- make it expire in shm (real wait)
+            ngx.sleep(0.201)
+
+            data, err, hit_lvl = cache:get("key", nil, cb, 91)
+            assert(data == 91, err or "invalid data value: " .. data)
+
+            ngx.say("+0.201s hit_lvl: ", hit_lvl)
+        }
+    }
+--- request
+GET /t
+--- response_body
++0.200s hit_lvl: 2
++0.200s hit_lvl: 2
++0.201s hit_lvl: 3
+--- no_error_log
+[error]

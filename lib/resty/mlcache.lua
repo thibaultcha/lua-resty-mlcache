@@ -525,6 +525,9 @@ local function get_shm_set_lru(self, key, shm_key, l1_serializer)
             return value, nil, went_stale
         end
 
+        -- 'shmerr' is 'flags' on :get_stale() success
+        local is_stale = shmerr == SHM_FLAGS.stale
+
         local remaining_ttl
         if ttl == 0 then
             -- indefinite ttl, keep '0' as it means 'forever'
@@ -533,6 +536,13 @@ local function get_shm_set_lru(self, key, shm_key, l1_serializer)
         else
             -- compute elapsed time to get remaining ttl for LRU caching
             remaining_ttl = ttl - (now() - at)
+
+            if remaining_ttl <= 0 then
+                -- value has less than 1ms of lifetime in the shm, avoid
+                -- setting it in LRU which would be wasteful and could
+                -- indefinitely cache the value when ttl == 0
+                return value, nil, nil, is_stale
+            end
         end
 
         value, err = set_lru(self, key, value, remaining_ttl, remaining_ttl,
@@ -540,9 +550,6 @@ local function get_shm_set_lru(self, key, shm_key, l1_serializer)
         if err then
             return nil, err
         end
-
-        -- 'shmerr' is 'flags' on :get_stale() success
-        local is_stale = shmerr == SHM_FLAGS.stale
 
         return value, nil, nil, is_stale
     end
