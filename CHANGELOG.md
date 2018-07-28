@@ -1,6 +1,7 @@
 # Table of Contents
 
 - [Unreleased](#unreleased)
+- [2.2.1](#2.2.1)
 - [2.2.0](#2.2.0)
 - [2.1.0](#2.1.0)
 - [2.0.2](#2.0.2)
@@ -11,7 +12,25 @@
 
 ## Unreleased
 
-Diff: [2.2.0...master]
+Diff: [2.2.1...master]
+
+[Back to TOC](#table-of-contents)
+
+## [2.2.1]
+
+> Released on: 2018/07/28
+
+#### Fixed
+
+- When `get()` returns a value from L2 (shm) during its last millisecond of
+  freshness, we do not erroneously cache the value in L1 (LRU) indefinitely
+  anymore. Thanks [@jdesgats](https://github.com/jdesgats) and
+  [@javierguerragiraldez](https://github.com/javierguerragiraldez) for the
+  report and initial fix.
+  [#58](https://github.com/thibaultcha/lua-resty-mlcache/pull/58)
+- When `get()` returns a previously resurrected value from L2 (shm), we now
+  correctly set the `hit_lvl` return value to `4`, instead of `2`.
+  [307feca](https://github.com/thibaultcha/lua-resty-mlcache/commit/307fecad6adac8755d4fcd931bbb498da23d069c)
 
 [Back to TOC](#table-of-contents)
 
@@ -145,7 +164,8 @@ Initial release.
 
 [Back to TOC](#table-of-contents)
 
-[2.2.0...master]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.2.0...master
+[2.2.1...master]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.2.1...master
+[2.2.1]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.2.0...2.2.1
 [2.2.0]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.1.0...2.2.0
 [2.1.0]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.0.2...2.1.0
 [2.0.2]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.0.1...2.0.2
