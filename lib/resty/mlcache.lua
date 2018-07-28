@@ -497,20 +497,20 @@ end
 
 
 local function get_shm_set_lru(self, key, shm_key, l1_serializer)
-    local v, err, went_stale = self.dict:get_stale(shm_key)
-    if v == nil and err then
-        -- err can be 'flags' upon successful get_stale() calls, so we
+    local v, shmerr, went_stale = self.dict:get_stale(shm_key)
+    if v == nil and shmerr then
+        -- shmerr can be 'flags' upon successful get_stale() calls, so we
         -- also check v == nil
-        return nil, "could not read from lua_shared_dict: " .. err
+        return nil, "could not read from lua_shared_dict: " .. shmerr
     end
 
     if self.shm_miss and v == nil then
         -- if we cache misses in another shm, maybe it is there
-        v, err, went_stale = self.dict_miss:get_stale(shm_key)
-        if v == nil and err then
-            -- err can be 'flags' upon successful get_stale() calls, so we
+        v, shmerr, went_stale = self.dict_miss:get_stale(shm_key)
+        if v == nil and shmerr then
+            -- shmerr can be 'flags' upon successful get_stale() calls, so we
             -- also check v == nil
-            return nil, "could not read from lua_shared_dict: " .. err
+            return nil, "could not read from lua_shared_dict: " .. shmerr
         end
     end
 
@@ -541,8 +541,8 @@ local function get_shm_set_lru(self, key, shm_key, l1_serializer)
             return nil, err
         end
 
-        -- 'err' is 'flags' on :get_stale() success
-        local is_stale = err == SHM_FLAGS.stale
+        -- 'shmerr' is 'flags' on :get_stale() success
+        local is_stale = shmerr == SHM_FLAGS.stale
 
         return value, nil, nil, is_stale
     end

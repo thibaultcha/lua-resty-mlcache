@@ -136,7 +136,15 @@ opts.resurrect_ttl must be >= 0
             ngx.say("hit_lvl: ", hit_lvl)
 
             ngx.say()
-            ngx.say("-> subsequent get()")
+            ngx.say("-> subsequent get() from LRU")
+            data, err, hit_lvl = cache:get("key", nil, cb)
+            ngx.say("data: ", data)
+            ngx.say("err: ", err)
+            ngx.say("hit_lvl: ", hit_lvl)
+
+            ngx.say()
+            ngx.say("-> subsequent get() from shm")
+            cache.lru:delete("key")
             data, err, hit_lvl = cache:get("key", nil, cb)
             ngx.say("data: ", data)
             ngx.say("err: ", err)
@@ -167,10 +175,15 @@ data: 123
 err: nil
 hit_lvl: 4
 
--> subsequent get()
+-> subsequent get() from LRU
 data: 123
 err: nil
 hit_lvl: 1
+
+-> subsequent get() from shm
+data: 123
+err: nil
+hit_lvl: 4
 
 sleeping for 0.2s...
 
