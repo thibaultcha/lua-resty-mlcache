@@ -89,6 +89,11 @@ http {
     # use LuaRocks or opm.
     lua_package_path "/path/to/lua-resty-mlcache/lib/?.lua;;";
 
+    # 'on' already is the default for this directive. If 'off', the L1 cache
+    # will be inefective since the Lua VM will be re-created for every
+    # request. This is fine during development, but ensure production is 'on'.
+    lua_code_cache on;
+
     lua_shared_dict cache_dict 1m;
 
     init_by_lua_block {
@@ -296,7 +301,7 @@ will rely on the same shm: `lua_shared_dict cache_shared_dict 2048m;`. Even if
 you use identical keys in both caches, they will not conflict with each other
 since they each have a different namespace.
 
-This other example instanciates an mlcache using the bundled IPC module for
+This other example instantiates an mlcache using the bundled IPC module for
 inter-workers invalidation events (so we can use [set()](#set),
 [delete()](#delete), and [purge()](#purge)):
 
@@ -308,6 +313,12 @@ local cache, err = mlcache.new("my_cache_with_ipc", "cache_shared_dict", {
     ipc_shm = "ipc_shared_dict"
 })
 ```
+
+**Note:** for the L1 cache to be effective, ensure that
+[lua_code_cache](https://github.com/openresty/lua-nginx-module#lua_code_cache)
+is enabled (which is the default). If you turn off this directive during
+development, mlcache will work, but L1 caching will be ineffective since a new
+Lua VM will be created for every request.
 
 [Back to TOC](#table-of-contents)
 
