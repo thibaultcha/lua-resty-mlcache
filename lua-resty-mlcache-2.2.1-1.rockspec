@@ -32,7 +32,7 @@ description = {
 build = {
   type    = "builtin",
   modules = {
-    ["resty.ipc"]     = "lib/resty/mlcache/ipc.lua",
-    ["resty.mlcache"] = "lib/resty/mlcache.lua"
+    ["resty.mlcache.ipc"] = "lib/resty/mlcache/ipc.lua",
+    ["resty.mlcache"]     = "lib/resty/mlcache.lua"
   }
 }
