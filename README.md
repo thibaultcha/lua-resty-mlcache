@@ -415,7 +415,9 @@ local function callback(arg1, arg2, arg3)
 
     -- value: the value to cache (Lua scalar or table)
     -- err: if not `nil`, will abort get(), which will return `value` and `err`
-    -- ttl: ttl for this value - if returned, will override `ttl` or `neg_ttl`
+    -- ttl: ttl for this value - if returned and `ttl >= 0`, it will override
+    --      `ttl` or `neg_ttl`. If `ttl < 0`, `value` will be returned to `get`
+    --      but not cached. `ttl` will be ignored if it is not a `number`.
     return value, err, ttl
 end
 ```

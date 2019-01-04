@@ -810,7 +810,10 @@ function _M:get(key, opts, cb, ...)
 
     -- override ttl / neg_ttl
 
-    if type(new_ttl) == "number" and new_ttl >= 0 then
+    if type(new_ttl) == "number" then
+        if new_ttl < 0 then
+            return unlock_and_ret(lock, data, nil, 3)
+        end
         if data == nil then
             neg_ttl = new_ttl
 
