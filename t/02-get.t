@@ -1732,7 +1732,7 @@ in callback 2
 
 
 
-=== TEST 39: get() ignores invalid callback 3th return value (not number, not positive)
+=== TEST 39: get() ignores invalid callback 3rd return value (not number)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1749,10 +1749,10 @@ in callback 2
 
             local function neg_cb()
                 ngx.say("in negative callback")
-                return nil, nil, -1
+                return nil, nil, {}
             end
 
-            ngx.say("Test A: string TTL return value is ignored")
+            ngx.say("Test A: string TTL return value for positive data is ignored")
 
             -- cache our value (runs pos_cb)
 
@@ -1774,7 +1774,7 @@ in callback 2
             assert(err == nil, err)
             assert(data == nil)
 
-            ngx.say("Test B: negative TTL return value is ignored")
+            ngx.say("Test B: table TTL return value for negative data is ignored")
 
             -- cache our value (runs neg_cb)
 
@@ -1800,10 +1800,10 @@ in callback 2
 --- request
 GET /t
 --- response_body
-Test A: string TTL return value is ignored
+Test A: string TTL return value for positive data is ignored
 in positive callback
 in negative callback
-Test B: negative TTL return value is ignored
+Test B: table TTL return value for negative data is ignored
 in negative callback
 in positive callback
 --- no_error_log
@@ -2366,5 +2366,72 @@ GET /t
 +0.200s hit_lvl: 2
 +0.200s hit_lvl: 2
 +0.201s hit_lvl: 3
+--- no_error_log
+[error]
+
+
+
+=== TEST 49: get() bypass cache for negative callback TTL
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local opts  = { ttl = 0.1, neg_ttl = 0.1 }
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", opts))
+
+            local function pos_cb()
+                ngx.say("in positive callback")
+                return 1, nil, -1
+            end
+
+            local function neg_cb()
+                ngx.say("in negative callback")
+                return nil, nil, -1
+            end
+
+            ngx.say("Test A: negative TTL return value for positive data bypasses cache")
+
+            -- don't cache our value (runs pos_cb)
+
+            local data, err, hit_level = cache:get("pos_key", opts, pos_cb)
+            assert(err == nil, err)
+            assert(data == 1)
+            assert(hit_level == 3)
+
+            -- pos_cb should run again
+
+            data, err = cache:get("pos_key", opts, pos_cb)
+            assert(err == nil, err)
+            assert(data == 1)
+            assert(hit_level == 3)
+
+            ngx.say("Test B: negative TTL return value for negative data bypasses cache")
+
+            -- don't cache our value (runs neg_cb)
+
+            data, err = cache:get("neg_key", opts, neg_cb)
+            assert(err == nil, err)
+            assert(data == nil)
+            assert(hit_level == 3)
+
+            -- neg_cb should run again
+
+            data, err = cache:get("neg_key", opts, neg_cb)
+            assert(err == nil, err)
+            assert(data == nil)
+            assert(hit_level == 3)
+        }
+    }
+--- request
+GET /t
+--- response_body
+Test A: negative TTL return value for positive data bypasses cache
+in positive callback
+in positive callback
+Test B: negative TTL return value for negative data bypasses cache
+in negative callback
+in negative callback
 --- no_error_log
 [error]
