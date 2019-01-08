@@ -14,7 +14,7 @@ Features:
 - Caching and negative caching with TTLs.
 - Built-in mutex via [lua-resty-lock] to prevent dog-pile effects to your
   database/backend on cache misses.
-- Built-in inter-workers communication to propagate cache invalidations
+- Built-in inter-worker communication to propagate cache invalidations
   and allow workers to update their L1 (lua-resty-lrucache) caches upon changes
   (`set()`, `delete()`).
 - Support for split hits and misses caching queues.
@@ -239,7 +239,7 @@ holding the desired options for this instance. The possible options are:
 - `shm_miss`: _optional_ string. The name of a `lua_shared_dict`. When
   specified, misses (callbacks returning `nil`) will be cached in this separate
   lua_shared_dict. This is useful to ensure that a large number of cache misses
-  (e.g. triggered by malicions clients) does not evict too many cached items
+  (e.g. triggered by malicious clients) does not evict too many cached items
   (hits) from the lua_shared_dict specified in `shm`.
 - `shm_locks`: _optional_ string. The name of a `lua_shared_dict`. When
   specified, lua-resty-lock will use this shared dict to store its locks. This
@@ -302,7 +302,7 @@ you use identical keys in both caches, they will not conflict with each other
 since they each have a different namespace.
 
 This other example instantiates an mlcache using the bundled IPC module for
-inter-workers invalidation events (so we can use [set()](#set),
+inter-worker invalidation events (so we can use [set()](#set),
 [delete()](#delete), and [purge()](#purge)):
 
 ```lua
