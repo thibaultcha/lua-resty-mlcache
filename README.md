@@ -265,8 +265,8 @@ holding the desired options for this instance. The possible options are:
   documented under the [get()](#get) method, along with an example. If
   specified, this function will be called each time a value is promoted from the
   L2 cache into the L1 (worker Lua VM). This function can perform arbitrary
-  serialization of the cached item to transform it into any Lua object _before_
-  storing it into the L1 cache. It can thus avoid your application from
+  de-serialization of the cached item to transform it into any Lua object
+  _before_ storing it into the L1 cache. It can thus avoid your application from
   having to repeat such transformations on every request, such as creating
   tables, cdata objects, loading new Lua code, etc...
 
