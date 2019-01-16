@@ -63,6 +63,9 @@ The cache level hierarchy is:
    (via [lua-resty-lock]). Values fetched via L3 will be set to the L2 cache
    for other workers to retrieve.
 
+This library has been presented at **OpenResty Con 2018**.  See the
+[Resources](#resources) section for a recording of the talk.
+
 # Table of Contents
 
 - [Synopsis](#synopsis)
@@ -76,6 +79,7 @@ The cache level hierarchy is:
     - [delete](#delete)
     - [purge](#purge)
     - [update](#update)
+- [Resources](#resources)
 - [Changelog](#changelog)
 - [License](#license)
 
@@ -816,6 +820,16 @@ library. `update()` is only a necessary evil due to today's Nginx/OpenResty
 
 [Back to TOC](#table-of-contents)
 
+# Resources
+
+In November 2018, this library was presented at OpenResty Con in Hangzhou,
+China.
+
+The slides and a recording of the talk (about 40 min long) can be viewed
+[here][talk].
+
+[Back to TOC](#table-of-contents)
+
 # Changelog
 
 See [CHANGELOG.md](CHANGELOG.md).
@@ -834,3 +848,5 @@ Work licensed under the MIT License.
 
 [badge-travis-url]: https://travis-ci.org/thibaultcha/lua-resty-mlcache
 [badge-travis-image]: https://travis-ci.org/thibaultcha/lua-resty-mlcache.svg?branch=master
+
+[talk]: https://www.slideshare.net/ThibaultCharbonnier/layered-caching-in-openresty-openresty-con-2018
