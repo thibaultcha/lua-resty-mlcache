@@ -5,26 +5,24 @@ source = {
   tag = "2.2.1"
 }
 description = {
-  summary  = "Multi-level caching library for OpenResty",
+  summary  = "Layered caching library for OpenResty",
   detailed = [[
-    This library combines the power of lua_shared_dict memory zones,
-    lua-resty-lrucache, and lua-resty-lock in a single, easy-to-use module.
+    This library can be manipulated as a key/value store caching scalar Lua
+    types and tables, combining the power of the lua_shared_dict API and
+    lua-resty-lrucache, which results in an extremely performant and flexible
+    layered caching solution.
 
-    A get() function acts as a "get or set" method, and can cache a value
-    from any I/O operation (like a database read). Your I/O operations will be
-    invoked from a single worker via lua-resty-lock, and will prevent your
-    database from undergoing a dogpile effect.
+    Features:
 
-    Cached values will be stored in a lua_shared_dict memory zone of your
-    choice, and the most frequently accessed values will be kept in the Lua VM,
-    under a lua-resty-lrucache instance to optimize your hot code paths.
-
-    Additionally, this module supports:
-
-    - Negative caching
-    - TTLs and negative TTLs
-    - Custom LRU implementations (like resty.lrucache.pureffi)
-    - A key/value API with set()/peek()/delete() (provided a few minor drawbacks)
+    - Caching and negative caching with TTLs.
+    - Built-in mutex via lua-resty-lock to prevent dog-pile effects to your
+      database/backend on cache misses.
+    - Built-in inter-worker communication to propagate cache invalidations and
+      allow workers to update their L1 (lua-resty-lrucache) caches upon changes
+      (`set()`, `delete()`).
+    - Support for split hits and misses caching queues.
+    - Multiple isolated instances can be created to hold various types of data
+      while relying on the *same* `lua_shared_dict` L2 cache.
   ]],
   homepage = "https://github.com/thibaultcha/lua-resty-mlcache",
   license  = "MIT"
