@@ -1,6 +1,7 @@
 # Table of Contents
 
 - [Unreleased](#unreleased)
+- [2.3.0](#2.3.0)
 - [2.2.1](#2.2.1)
 - [2.2.0](#2.2.0)
 - [2.1.0](#2.1.0)
@@ -12,7 +13,21 @@
 
 ## Unreleased
 
-Diff: [2.2.1...master]
+Diff: [2.3.0...master]
+
+[Back to TOC](#table-of-contents)
+
+## [2.3.0]
+
+> Released on: 2019/01/17
+
+#### Added
+
+- Returning a negative `ttl` value from the L3 callback will now make the
+  fetched data bypass the cache (it will still be returned by `get()`).
+  This is useful when some fetched data indicates that it is not cacheable.
+  Thanks [@eaufavor](https://github.com/eaufavor) for the patch!
+  [#68](https://github.com/thibaultcha/lua-resty-mlcache/pull/68)
 
 [Back to TOC](#table-of-contents)
 
@@ -164,7 +179,8 @@ Initial release.
 
 [Back to TOC](#table-of-contents)
 
-[2.2.1...master]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.2.1...master
+[2.3.0...master]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.3.0...master
+[2.3.0]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.2.1...2.3.0
 [2.2.1]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.2.0...2.2.1
 [2.2.0]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.1.0...2.2.0
 [2.1.0]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.0.2...2.1.0
