@@ -516,7 +516,7 @@ some transformation to the retrieved `user` record, and cache it via the
 local function load_code(user_row)
     if user_row.custom_code ~= nil then
         local f, err = loadstring(user_row.raw_lua_code)
-        if not compiled then
+        if not f then
             -- in this case, nothing will be stored in the cache (as if the L3
             -- callback failed)
             return nil, "failed to compile custom code: " .. err
