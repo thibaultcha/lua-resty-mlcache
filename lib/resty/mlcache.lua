@@ -764,7 +764,8 @@ function _M:get(key, opts, cb, ...)
 
     local pok, perr, err, new_ttl = xpcall(cb, traceback, ...)
     if not pok then
-        return unlock_and_ret(lock, nil, "callback threw an error: " .. perr)
+        return unlock_and_ret(lock, nil, "callback threw an error: " ..
+                              tostring(perr))
     end
 
     if err then
