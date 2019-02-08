@@ -18,6 +18,7 @@ env:
   global:
     - JOBS=2
     - LUAROCKS_VER=2.4.3
+    - TEST_NGINX_RANDOMIZE=1
   matrix:
     - OPENRESTY_VER=1.11.2.2
     - OPENRESTY_VER=1.11.2.3
@@ -56,4 +57,4 @@ install:
   - nginx -V
 
 script:
-  - if [ -z "$LINT" ]; then TEST_NGINX_RANDOMIZE=1 prove -j$JOBS -r t; else luacheck lib; fi
+  - if [ -z "$LINT" ]; then prove -j$JOBS -r t; else luacheck lib; fi
