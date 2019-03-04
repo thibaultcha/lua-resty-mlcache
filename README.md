@@ -74,6 +74,9 @@ This library has been presented at **OpenResty Con 2018**.  See the
 - [Methods](#methods)
     - [new](#new)
     - [get](#get)
+    - [get_bulk](#get_bulk)
+    - [new_bulk](#new_bulk)
+    - [each_bulk_res](#each_bulk_res)
     - [peek](#peek)
     - [set](#set)
     - [delete](#delete)
@@ -539,6 +542,157 @@ end
 -- now we can call a function that was already loaded once, upon entering
 -- the L1 cache (Lua VM)
 user.f()
+```
+
+[Back to TOC](#table-of-contents)
+
+get_bulk
+--------
+**syntax**: `res, err = cache:get_bulk(bulk, opts?)`
+
+Performs several [get()](#get) lookups at once (in bulk). Any of these lookups
+requiring an L3 callback call will be executed concurrently, in a pool of
+[ngx.thread](https://github.com/openresty/lua-nginx-module#ngxthreadspawn).
+
+The first argument `bulk` is a table containing `n` operations.
+
+The second argument `opts` is optional. If provided, it must be a table holding
+the options for this bulk lookup. The possible options are:
+
+- `concurrency`: a number greater than `0`. Specifies the number of threads
+  that will concurrently execute the L3 callbacks for this bulk lookup. A
+  concurrency of `3` with 6 callbacks to run means than each thread will
+  execute 2 callbacks. A concurrency of `1` with 6 callbacks means than a
+  single thread will execute all 6 callbacks. With a concurrency of `6` and 1
+  callback, a single thread will run the callback.
+  **Default**: `3`.
+
+Upon success, this method returns `res`, a table containing the results of
+each lookup, and no error.
+
+Upon failure, this method returns `nil` plus a string describing the error.
+
+All lookup operations performed by this method will fully integrate into other
+operations being concurrently performed by other methods and Nginx workers
+(e.g. L1/L2 hits/misses storage, L3 callback mutex, etc...).
+
+
+The `bulk` argument is a table that must have a particular layout (documented
+in the below example). It can be built manually, or via the
+[new_bulk()](#new_bulk) helper method.
+
+Similarly, the `res` table also has a particular layout of its own. It can be
+iterated upon manually, or via the [each_bulk_res](#each_bulk_res) iterator
+helper.
+
+Example:
+
+```lua
+local mlcache = require "mlcache"
+
+local cache, err = mlcache.new("my_cache", "cache_shared_dict")
+
+cache:get("key_c", nil, function() return nil end)
+
+local res, err = cache:get_bulk({
+  -- bulk layout:
+  -- key     opts          L3 callback                    callback argument
+
+    "key_a", { ttl = 60 }, function() return "hello" end, nil,
+    "key_b", nil,          function() return "world" end, nil,
+    "key_c", nil,          function() return "bye" end,   nil,
+    n = 3 -- specify the number of operations
+}, { concurrency = 3 })
+if err then
+     ngx.log(ngx.ERR, "could not execute bulk lookup: ", err)
+     return
+end
+
+-- res layout:
+-- data, "err", hit_lvl }
+
+for i = 1, res.n, 3 do
+    local data = res[i]
+    local err = res[i + 1]
+    local hit_lvl = res[i + 2]
+
+    if not err then
+        ngx.say("data: ", data, ", hit_lvl: ", hit_lvl)
+    end
+end
+```
+
+The above example would produce the following output:
+
+```
+data: hello, hit_lvl: 3
+data: world, hit_lvl: 3
+data: nil, hit_lvl: 1
+```
+
+Note that since `key_c` was already in the cache, the callback returning
+`"bye"` was never run, since `get_bulk()` retrieved the value from L1, as
+indicated by the `hit_lvl` value.
+
+**Note:** unlike [get()](#get), this method only allows specifying a single
+argument to each lookup's callback.
+
+[Back to TOC](#table-of-contents)
+
+new_bulk
+--------
+**syntax**: `bulk = mlcache.new_bulk(n_lookups?)`
+
+Creates a table holding lookup operations for the [get_bulk()](#get_bulk)
+function. It is not required to use this function to construct a bulk lookup
+table, but it provides a nice abstraction.
+
+The first and only argument `n_lookups` is optional, and if specified, is a
+number hinting the amount of lookups this bulk will eventually contain so that
+the underlying table is pre-allocated for optimization purposes.
+
+This function returns a table `bulk`, which contains no lookup operations yet.
+Lookups are added to a `bulk` table by invoking `bulk:add(key, opts?, cb,
+arg?)`:
+
+```lua
+local mlcache = require "mlcache"
+
+local cache, err = mlcache.new("my_cache", "cache_shared_dict")
+
+local bulk = mlcache.new_bulk(3)
+
+bulk:add("key_a", { ttl = 60 }, function(n) return n * n, 42)
+bulk:add("key_b", nil, function(str) return str end, "hello")
+bulk:add("key_c", nil, function() return nil end)
+
+local res, err = cache:get_bulk(bulk)
+```
+
+[Back to TOC](#table-of-contents)
+
+each_bulk_res
+-------------
+**syntax**: `iter, res, i = mlcache.each_bulk_res(res)`
+
+Provides an abstraction to iterate over a [get_bulk()](#get_bulk) `res` return
+table. It is not required to use this method to iterate over a `res` table, but
+it provides a nice abstraction.
+
+This method can be invoked as a Lua iterator:
+
+```lua
+local mlcache = require "mlcache"
+
+local cache, err = mlcache.new("my_cache", "cache_shared_dict")
+
+local res, err = cache:get_bulk(bulk)
+
+for i, data, err, hit_lvl in mlcache.each_bulk_res(res) do
+    if not err then
+        ngx.say("lookup ", i, ": ", data)
+    end
+end
 ```
 
 [Back to TOC](#table-of-contents)
