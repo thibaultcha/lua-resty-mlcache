@@ -651,62 +651,14 @@ local function unlock_and_ret(lock, res, err, hit_lvl)
 end
 
 
-function _M:get(key, opts, cb, ...)
-    if type(key) ~= "string" then
-        error("key must be a string", 2)
-    end
-
-    if type(cb) ~= "function" then
-        error("callback must be a function", 2)
-    end
-
-    -- worker LRU cache retrieval
-
-    local data = self.lru:get(key)
-    if data == CACHE_MISS_SENTINEL_LRU then
-        return nil, nil, 1
-    end
-
-    if data ~= nil then
-        return data, nil, 1
-    end
-
-    -- not in worker's LRU cache, need shm lookup
-
-    -- restrict this key to the current namespace, so we isolate this
-    -- mlcache instance from potential other instances using the same
-    -- shm
-    local namespaced_key = self.name .. key
-
-    -- opts validation
-
-    local ttl, neg_ttl, resurrect_ttl, l1_serializer, shm_set_tries =
-        check_opts(self, opts)
-
-    local err, went_stale, is_stale
-    data, err, went_stale, is_stale = get_shm_set_lru(self, key, namespaced_key,
-                                                      l1_serializer)
-    if err then
-        return nil, err
-    end
-
-    if data ~= nil and not went_stale then
-        if data == CACHE_MISS_SENTINEL_LRU then
-            data = nil
-        end
-
-        return data, nil, is_stale and 4 or 2
-    end
-
-    -- not in shm either
-    -- single worker must execute the callback
-
+local function run_callback(self, key, shm_key, data, ttl, neg_ttl,
+    went_stale, l1_serializer, resurrect_ttl, shm_set_tries, cb, ...)
     local lock, err = resty_lock:new(self.shm_locks, self.resty_lock_opts)
     if not lock then
         return nil, "could not create lock: " .. err
     end
 
-    local elapsed, lerr = lock:lock(LOCK_KEY_PREFIX .. namespaced_key)
+    local elapsed, lerr = lock:lock(LOCK_KEY_PREFIX .. shm_key)
     if not elapsed and lerr ~= "timeout" then
         return nil, "could not acquire callback lock: " .. lerr
     end
@@ -718,7 +670,7 @@ function _M:get(key, opts, cb, ...)
         -- get() and this one)
 
         local data2, err, went_stale2, stale2 = get_shm_set_lru(self, key,
-                                                                namespaced_key,
+                                                                shm_key,
                                                                 l1_serializer)
         if err then
             return unlock_and_ret(lock, nil, err)
@@ -788,7 +740,7 @@ function _M:get(key, opts, cb, ...)
                       "value found in shm will be resurrected for ",
                       resurrect_ttl, "s (resurrect_ttl)")
 
-        local res_data, res_err = set_shm_set_lru(self, key, namespaced_key,
+        local res_data, res_err = set_shm_set_lru(self, key, shm_key,
                                                   data, resurrect_ttl,
                                                   resurrect_ttl,
                                                   SHM_FLAGS.stale,
@@ -824,8 +776,8 @@ function _M:get(key, opts, cb, ...)
         end
     end
 
-    data, err = set_shm_set_lru(self, key, namespaced_key, data,
-                                ttl, neg_ttl, nil, shm_set_tries, l1_serializer)
+    data, err = set_shm_set_lru(self, key, shm_key, data, ttl, neg_ttl, nil,
+                                shm_set_tries, l1_serializer)
     if err then
         return unlock_and_ret(lock, nil, err)
     end
@@ -837,6 +789,62 @@ function _M:get(key, opts, cb, ...)
     -- unlock and return
 
     return unlock_and_ret(lock, data, nil, 3)
+end
+
+
+function _M:get(key, opts, cb, ...)
+    if type(key) ~= "string" then
+        error("key must be a string", 2)
+    end
+
+    if type(cb) ~= "function" then
+        error("callback must be a function", 2)
+    end
+
+    -- worker LRU cache retrieval
+
+    local data = self.lru:get(key)
+    if data == CACHE_MISS_SENTINEL_LRU then
+        return nil, nil, 1
+    end
+
+    if data ~= nil then
+        return data, nil, 1
+    end
+
+    -- not in worker's LRU cache, need shm lookup
+
+    -- restrict this key to the current namespace, so we isolate this
+    -- mlcache instance from potential other instances using the same
+    -- shm
+    local namespaced_key = self.name .. key
+
+    -- opts validation
+
+    local ttl, neg_ttl, resurrect_ttl, l1_serializer, shm_set_tries =
+        check_opts(self, opts)
+
+    local err, went_stale, is_stale
+    data, err, went_stale, is_stale = get_shm_set_lru(self, key, namespaced_key,
+                                                      l1_serializer)
+    if err then
+        return nil, err
+    end
+
+    if data ~= nil and not went_stale then
+        if data == CACHE_MISS_SENTINEL_LRU then
+            data = nil
+        end
+
+        return data, nil, is_stale and 4 or 2
+    end
+
+    -- not in shm either
+    -- single worker must execute the callback
+
+    return run_callback(self, key, namespaced_key, data, ttl, neg_ttl,
+                        went_stale, l1_serializer, resurrect_ttl,
+                        shm_set_tries, cb, ...)
 end
 
 
