@@ -1907,14 +1907,15 @@ was given 'opts.resty_lock_opts': true
                 ngx.say("hit_lvl: ", hit_lvl)
             end)
 
-            assert(ngx.thread.wait(t1, t2))
+            assert(ngx.thread.wait(t1))
+            assert(ngx.thread.wait(t2))
 
             ngx.say()
             ngx.say("-> subsequent get()")
             data, err, hit_lvl = cache_2:get("my_key", nil, cb, nil, 123)
             ngx.say("data: ", data)
             ngx.say("err: ", err)
-            ngx.say("hit_lvl: ", hit_lvl)
+            ngx.say("hit_lvl: ", hit_lvl) -- should be 1 since LRU instances are shared by mlcache namespace, and t1 finished
         }
     }
 --- request
@@ -1927,7 +1928,7 @@ hit_lvl: nil
 -> subsequent get()
 data: 456
 err: nil
-hit_lvl: 2
+hit_lvl: 1
 --- no_error_log
 [error]
 
