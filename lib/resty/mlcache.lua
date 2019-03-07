@@ -124,7 +124,6 @@ local function rebuild_lru(self)
         -- which would be more appropriate:
         -- https://github.com/openresty/lua-resty-lrucache/pull/23
         LRU_INSTANCES[name] = nil
-        self.c_lru_gc = nil
         self.lru = nil
     end
 
