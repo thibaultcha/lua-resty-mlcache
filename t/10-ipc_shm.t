@@ -2,6 +2,7 @@
 
 use Test::Nginx::Socket::Lua;
 use Cwd qw(cwd);
+use t::Util;
 
 workers(2);
 
@@ -222,7 +223,8 @@ called lru:delete() with key: my_key
 
 
 
-=== TEST 6: purge() with mlcache_shm invalidates other workers' LRU cache
+=== TEST 6: purge() with mlcache_shm invalidates other workers' LRU cache (OpenResty < 1.13.6.2)
+--- skip_eval: 3: t::Util::skip_openresty('>=', '1.13.6.2')
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -261,5 +263,54 @@ cache has new lru: true
 cache_clone still has same lru: true
 calling update on cache_clone
 cache_clone has new lru: true
+--- no_error_log
+[error]
+
+=== TEST 7: purge() with mlcache_shm invalidates other workers' LRU cache (OpenResty >= 1.13.6.2)
+--- skip_eval: 3: t::Util::skip_openresty('<', '1.13.6.2')
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local opts = {
+                ipc_shm = "ipc_shm",
+                debug = true -- allows same worker to receive its own published events
+            }
+
+            local cache = assert(mlcache.new("namespace", "cache_shm", opts))
+            local cache_clone = assert(mlcache.new("namespace", "cache_shm", opts))
+
+            local lru = cache.lru
+
+            ngx.say("both instances use the same lru: ", cache.lru == cache_clone.lru)
+
+            do
+                local lru_flush_all = lru.flush_all
+                cache.lru.flush_all = function(self)
+                    ngx.say("called lru:flush_all()")
+                    return lru_flush_all(self)
+                end
+            end
+
+            assert(cache:purge())
+
+            ngx.say("calling update on cache_clone")
+            assert(cache_clone:update())
+
+            ngx.say("both instances use the same lru: ", cache.lru == cache_clone.lru)
+            ngx.say("lru didn't change after purge: ", cache.lru == lru)
+        }
+    }
+--- request
+GET /t
+--- response_body
+both instances use the same lru: true
+called lru:flush_all()
+calling update on cache_clone
+called lru:flush_all()
+both instances use the same lru: true
+lru didn't change after purge: true
 --- no_error_log
 [error]

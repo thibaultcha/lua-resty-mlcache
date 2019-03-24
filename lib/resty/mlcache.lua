@@ -118,13 +118,14 @@ local function rebuild_lru(self)
     local name = self.name
 
     if self.lru then
-        -- When calling purge(), we invalidate the entire LRU by
-        -- GC-ing it.
-        -- lua-resty-lrucache has a 'flush_all()' method in development
-        -- which would be more appropriate:
-        -- https://github.com/openresty/lua-resty-lrucache/pull/23
-        LRU_INSTANCES[name] = nil
-        self.lru = nil
+        if self.lru.flush_all then
+            -- Use 'flush_all' from new versions of lua-resty-lrucache.
+            self.lru:flush_all()
+        else
+            -- Invalidate the entire LRU by GC-ing it.
+            LRU_INSTANCES[name] = nil
+            self.lru = nil
+        end
     end
 
     -- Several mlcache instances can have the same name and hence, the same
