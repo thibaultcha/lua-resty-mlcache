@@ -115,25 +115,25 @@ local unmarshallers = {
 
 
 local function rebuild_lru(self)
-    local name = self.name
-
     if self.lru then
-        -- When calling purge(), we invalidate the entire LRU by
-        -- GC-ing it.
-        -- lua-resty-lrucache has a 'flush_all()' method in development
-        -- which would be more appropriate:
-        -- https://github.com/openresty/lua-resty-lrucache/pull/23
-        LRU_INSTANCES[name] = nil
+        if self.lru.flush_all then
+            self.lru:flush_all()
+            return
+        end
+
+        -- fallback for OpenResty < 1.13.6.2
+        -- Invalidate the entire LRU by GC-ing it.
+        LRU_INSTANCES[self.name] = nil
         self.lru = nil
     end
 
     -- Several mlcache instances can have the same name and hence, the same
     -- lru instance. We need to GC such LRU instance when all mlcache instances
     -- using them are GC'ed. We do this with a weak table.
-    local lru = LRU_INSTANCES[name]
+    local lru = LRU_INSTANCES[self.name]
     if not lru then
         lru = lrucache.new(self.lru_size)
-        LRU_INSTANCES[name] = lru
+        LRU_INSTANCES[self.name] = lru
     end
 
     self.lru = lru
@@ -984,8 +984,9 @@ function _M:purge(flush_expired)
         error("no ipc to propagate purge, specify opts.ipc_shm or opts.ipc", 2)
     end
 
-    if LRU_INSTANCES[self.name] ~= self.lru then
-        error("cannot purge when using custom LRU cache", 2)
+    if not self.lru.flush_all and LRU_INSTANCES[self.name] ~= self.lru then
+        error("cannot purge when using custom LRU cache with " ..
+              "OpenResty < 1.13.6.2", 2)
     end
 
     -- clear shm first
