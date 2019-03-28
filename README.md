@@ -784,15 +784,11 @@ On success, the first return value will be `true`.
 
 On failure, this method returns `nil` and a string describing the error.
 
-**Note:** methods such as [set()](#set) and [delete()](#delete) require that
-other instances of mlcache (from other workers) refresh the value in their L1
-cache. Since OpenResty currently has no built-in mechanism for inter-worker
-communication, this module relies on a polling mechanism via a
-`lua_shared_dict` memory zone to propagate inter-worker events. If `set()` or
-`delete()` are called from a single worker, other workers' mlcache instances
-bearing the same `name` must call [update()](#update) before their cache be
-requested during the next request, to make sure they evicted their L1 value,
-and that the L2 value (which is fresh) will be fetched and returned.
+**Note:** by its nature, `set()` requires that other instances of mlcache (from
+other workers) refresh their L1 cache. If `set()` is called from a single
+worker, other workers' mlcache instances bearing the same `name` must call
+[update()](#update) before their cache be requested during the next request, to
+make sure they refreshed their L1 cache.
 
 **Note bis:** It is generally considered inefficient to call `set()` on a hot
 code path (such as in a request being served by OpenResty). Instead, one should
@@ -800,9 +796,8 @@ rely on [get()](#get) and its built-in mutex in the L3 callback. `set()` is
 better suited when called occasionally from a single worker, for example upon a
 particular event that triggers a cached value to be updated. Once `set()`
 updates the L2 cache with the fresh value, other workers will rely on
-[update()](#update) to poll the invalidation event. Calling `get()` on those
-other workers thus triggers an L1 miss, but the L2 access will hit the fresh
-value.
+[update()](#update) to poll the invalidation event and invalidate their L1
+cache, which will make them fetch the (fresh) value in L2.
 
 **See:** [update()](#update)
 
@@ -821,15 +816,11 @@ On success, the first return value will be `true`.
 
 On failure, this method returns `nil` and a string describing the error.
 
-**Note:** methods such as [set()](#set) and [delete()](#delete) require that
-other instances of mlcache (from other workers) refresh the value in their L1
-cache. Since OpenResty currently has no built-in mechanism for inter-worker
-communication, this module relies on a polling mechanism via a
-`lua_shared_dict` memory zone to propagate inter-worker events. If `set()` or
-`delete()` are called from a single worker, other workers' mlcache instances
-bearing the same `name` must call [update()](#update) before their cache be
-requested during the next request, to make sure they evicted their L1 value,
-and that the L2 value (which is fresh) will be fetched and returned.
+**Note:** by its nature, `delete()` requires that other instances of mlcache
+(from other workers) refresh their L1 cache. If `delete()` is called from a
+single worker, other workers' mlcache instances bearing the same `name` must
+call [update()](#update) before their cache be requested during the next
+request, to make sure they refreshed their L1 cache.
 
 **See:** [update()](#update)
 
@@ -856,15 +847,15 @@ On success, the first return value will be `true`.
 
 On failure, this method returns `nil` and a string describing the error.
 
-**Note:** methods such as [set()](#set) and [delete()](#delete) require that
-other instances of mlcache (from other workers) refresh the value in their L1
-cache. Since OpenResty currently has no built-in mechanism for inter-worker
-communication, this module relies on a polling mechanism via a
-`lua_shared_dict` memory zone to propagate inter-worker events. If `set()` or
-`delete()` are called from a single worker, other workers' mlcache instances
-bearing the same `name` must call [update()](#update) before their cache be
-requested during the next request, to make sure they evicted their L1 value,
-and that the L2 value (which is fresh) will be fetched and returned.
+**Note:** it is not possible to call `purge()` when using a custom LRU cache in
+OpenResty 1.13.6.1 and below. This limitation does not apply for OpenResty
+1.13.6.2 and above.
+
+**Note:** by its nature, `purge()` requires that other instances of mlcache
+(from other workers) refresh their L1 cache. If `purge()` is called from a
+single worker, other workers' mlcache instances bearing the same `name` must
+call [update()](#update) before their cache be requested during the next
+request, to make sure they refreshed their L1 cache.
 
 **See:** [update()](#update)
 
@@ -876,8 +867,8 @@ update
 
 Poll and execute pending cache invalidation events published by other workers.
 
-Methods such as [set()](#set) and [delete()](#delete) require that other
-instances of mlcache (from other workers) refresh the value in their L1 cache.
+The [set()](#set), [delete()](#delete), and [purge()](#purge) methods require
+that other instances of mlcache (from other workers) refresh their L1 cache.
 Since OpenResty currently has no built-in mechanism for inter-worker
 communication, this module bundles an "off-the-shelf" IPC library to propagate
 inter-worker events. If the bundled IPC library is used, the `lua_shared_dict`
@@ -885,8 +876,8 @@ specified in the `ipc_shm` option **must not** be used by other actors than
 mlcache itself.
 
 This method allows a worker to update its L1 cache (by purging values
-considered stale due to an other worker calling `set()` or `delete()`) before
-processing a request.
+considered stale due to an other worker calling `set()`, `delete()`, or
+`purge()`) before processing a request.
 
 A typical design pattern is to call `update()` **only once** before each
 request processing. This allows your hot code paths to perform a single shm
@@ -896,9 +887,9 @@ values were evicted by another worker) will `get()` access the L2 or L3 cache
 `n` times. Subsequent requests will then hit the best case scenario again,
 because `get()` populated the L1 cache.
 
-For example, if your workers make use of [set()](#set) or [delete()](#delete)
-anywhere in your application, call `update()` at the entrance of your hot code
-path, before using `get()`:
+For example, if your workers make use of [set()](#set), [delete()](#delete), or
+[purge()](#purge) anywhere in your application, call `update()` at the entrance
+of your hot code path, before using `get()`:
 
 ```
 http {
@@ -962,8 +953,8 @@ http {
 ```
 
 **Note:** you **do not** need to call `update()` to refresh your workers if
-they never call `set()`or `delete()`. When workers only rely on `get()`, values
-expire naturally from the L1/L2 caches according to their TTL.
+they never call `set()`,  `delete()`, or `purge()`. When workers only rely on
+`get()`, values expire naturally from the L1/L2 caches according to their TTL.
 
 **Note bis:** this library was built with the intent to use a better solution
 for inter-worker communication as soon as one emerges. In future versions of
