@@ -984,6 +984,10 @@ function _M:purge(flush_expired)
         error("no ipc to propagate purge, specify opts.ipc_shm or opts.ipc", 2)
     end
 
+    if LRU_INSTANCES[self.name] ~= self.lru then
+        error("cannot purge when using custom LRU cache", 2)
+    end
+
     -- clear shm first
     self.dict:flush_all()
 
