@@ -428,7 +428,7 @@ local function callback(arg1, arg2, arg3)
 end
 ```
 
-This function **can** throw Lua errors as it runs in protected mode. Such
+This function is allowed to throw Lua errors as it runs in protected mode. Such
 errors thrown from the callback will be returned as strings in the second
 return value `err`.
 
