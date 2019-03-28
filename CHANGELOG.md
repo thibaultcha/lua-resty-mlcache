@@ -1,6 +1,6 @@
 # Table of Contents
 
-- [Unreleased](#unreleased)
+- [2.4.0](#2.4.0)
 - [2.3.0](#2.3.0)
 - [2.2.1](#2.2.1)
 - [2.2.0](#2.2.0)
@@ -11,9 +11,32 @@
 - [1.0.1](#1.0.1)
 - [1.0.0](#1.0.0)
 
-## Unreleased
+## [2.4.0]
 
-Diff: [2.3.0...master]
+> Released on: 2019/03/28
+
+#### Added
+
+- A new `get_bulk()` API allows for fetching several values from the layered
+  caches in a single call, and will execute all L3 callback functions
+  concurrently, in a configurable pool of threads.
+  [#77](https://github.com/thibaultcha/lua-resty-mlcache/pull/77)
+- `purge()` now clears the L1 LRU cache with the new `flush_all()` method when
+  used in OpenResty >= 1.13.6.2.
+  Thanks [@Crack](https://github.com/Crack) for the patch!
+  [#78](https://github.com/thibaultcha/lua-resty-mlcache/pull/78)
+
+#### Fixed
+
+- `get()` is now resilient to L3 callback functions calling `error()` with
+  non-string arguments. Such functions could result in a runtime error when
+  LuaJIT is compiled with `-DLUAJIT_ENABLE_LUA52COMPAT`.
+  Thanks [@MartinAmps](https://github.com/MartinAmps) for the patch!
+  [#75](https://github.com/thibaultcha/lua-resty-mlcache/pull/75)
+- Instances using a custom L1 LRU cache on OpenResty < 1.13.6.2 are now
+  restricted from calling `purge()`, since doing so would result in the LRU
+  cache being overwritten.
+  [#79](https://github.com/thibaultcha/lua-resty-mlcache/pull/79)
 
 [Back to TOC](#table-of-contents)
 
@@ -179,7 +202,7 @@ Initial release.
 
 [Back to TOC](#table-of-contents)
 
-[2.3.0...master]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.3.0...master
+[2.4.0]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.3.0...2.4.0
 [2.3.0]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.2.1...2.3.0
 [2.2.1]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.2.0...2.2.1
 [2.2.0]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.1.0...2.2.0
