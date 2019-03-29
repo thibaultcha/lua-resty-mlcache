@@ -33,7 +33,7 @@
   LuaJIT is compiled with `-DLUAJIT_ENABLE_LUA52COMPAT`.
   Thanks [@MartinAmps](https://github.com/MartinAmps) for the patch!
   [#75](https://github.com/thibaultcha/lua-resty-mlcache/pull/75)
-- Instances using a custom L1 LRU cache on OpenResty < 1.13.6.2 are now
+- Instances using a custom L1 LRU cache in OpenResty < 1.13.6.2 are now
   restricted from calling `purge()`, since doing so would result in the LRU
   cache being overwritten.
   [#79](https://github.com/thibaultcha/lua-resty-mlcache/pull/79)
