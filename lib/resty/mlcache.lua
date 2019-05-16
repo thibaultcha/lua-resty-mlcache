@@ -5,6 +5,7 @@ local new_tab    = require "table.new"
 local lrucache   = require "resty.lrucache"
 local resty_lock = require "resty.lock"
 local tablepool
+local tab_clone
 do
     local pok
     pok, tablepool = pcall(require, "tablepool")
@@ -18,6 +19,20 @@ do
                 -- nop (obj will be subject to GC)
             end,
         }
+    end
+
+    pok, tab_clone = pcall(require, "table.clone")
+    if not pok then
+        -- fallback for OpenResty < 1.13.6.2
+        local pairs = pairs
+
+        tab_clone = function(t)
+            local copy = {} -- no nkeys either in this case
+            for k, v in pairs(t) do
+                copy[k] = v
+            end
+            return copy
+        end
     end
 end
 
@@ -210,6 +225,12 @@ function _M.new(name, shm, opts)
             end
         end
 
+        if opts.serve_stale ~= nil then
+            if type(opts.serve_stale) ~= "boolean" then
+                error("opts.serve_stale must be a boolean", 2)
+            end
+        end
+
         if opts.resurrect_ttl ~= nil then
             if type(opts.resurrect_ttl) ~= "number" then
                 error("opts.resurrect_ttl must be a number", 2)
@@ -310,12 +331,21 @@ function _M.new(name, shm, opts)
         shm_locks       = opts.shm_locks or shm,
         ttl             = opts.ttl     or 30,
         neg_ttl         = opts.neg_ttl or 5,
+        serve_stale     = opts.serve_stale,
         resurrect_ttl   = opts.resurrect_ttl,
         lru_size        = opts.lru_size or 100,
         resty_lock_opts = opts.resty_lock_opts,
         l1_serializer   = opts.l1_serializer,
         shm_set_tries   = opts.shm_set_tries or SHM_SET_DEFAULT_TRIES,
         debug           = opts.debug,
+        --[[
+        lru                           = nil,
+        resty_lock_opts_abort_on_lock = nil,
+        events                        = nil,
+        ipc                           = nil,
+        poll                          = nil,
+        broadcast                     = nil,
+        --]]
     }
 
     if opts.ipc_shm or opts.ipc then
@@ -378,6 +408,16 @@ function _M.new(name, shm, opts)
 
     else
         rebuild_lru(self)
+    end
+
+    if opts.resty_lock_opts then
+        self.resty_lock_opts_abort_on_lock = tab_clone(self.resty_lock_opts)
+        self.resty_lock_opts_abort_on_lock.timeout = 0
+
+    else
+        self.resty_lock_opts_abort_on_lock = {
+            timeout = 0,
+        }
     end
 
     return setmetatable(self, mt)
@@ -582,6 +622,7 @@ end
 local function check_opts(self, opts)
     local ttl
     local neg_ttl
+    local serve_stale
     local resurrect_ttl
     local l1_serializer
     local shm_set_tries
@@ -610,6 +651,13 @@ local function check_opts(self, opts)
 
             if neg_ttl < 0 then
                 error("opts.neg_ttl must be >= 0", 3)
+            end
+        end
+
+        serve_stale = opts.serve_stale
+        if serve_stale ~= nil then
+            if type(serve_stale) ~= "boolean" then
+                error("opts.serve_stale must be a boolean", 3)
             end
         end
 
@@ -649,6 +697,10 @@ local function check_opts(self, opts)
         neg_ttl = self.neg_ttl
     end
 
+    if not serve_stale then
+        serve_stale = self.serve_stale
+    end
+
     if not resurrect_ttl then
         resurrect_ttl = self.resurrect_ttl
     end
@@ -661,7 +713,8 @@ local function check_opts(self, opts)
         shm_set_tries = self.shm_set_tries
     end
 
-    return ttl, neg_ttl, resurrect_ttl, l1_serializer, shm_set_tries
+    return ttl, neg_ttl, serve_stale, resurrect_ttl, l1_serializer,
+           shm_set_tries
 end
 
 
@@ -676,8 +729,19 @@ end
 
 
 local function run_callback(self, key, shm_key, data, ttl, neg_ttl,
-    went_stale, l1_serializer, resurrect_ttl, shm_set_tries, cb, ...)
-    local lock, err = resty_lock:new(self.shm_locks, self.resty_lock_opts)
+    went_stale, l1_serializer, resurrect_ttl, shm_set_tries, abort_on_lock,
+    cb, ...)
+
+    local resty_lock_opts
+
+    if abort_on_lock then
+        resty_lock_opts = self.resty_lock_opts_abort_on_lock
+
+    else
+        resty_lock_opts = self.resty_lock_opts
+    end
+
+    local lock, err = resty_lock:new(self.shm_locks, resty_lock_opts)
     if not lock then
         return nil, "could not create lock: " .. err
     end
@@ -734,6 +798,14 @@ local function run_callback(self, key, shm_key, data, ttl, neg_ttl,
 
         return data, nil, 4
     end
+
+    --[[
+    if abort_on_lock then
+        -- early exit when serve_stale = true since another thread is already
+        -- running the callback and our main thread already got the stale data
+        return nil, "early exit"
+    end
+    --]]
 
     -- still not in shm, we are the 1st worker to hold the lock, and thus
     -- responsible for running the callback
@@ -827,7 +899,7 @@ function _M:get(key, opts, cb, ...)
 
     -- worker LRU cache retrieval
 
-    local data = self.lru:get(key)
+    local data, stale_data = self.lru:get(key)
     if data == CACHE_MISS_SENTINEL_LRU then
         return nil, nil, 1
     end
@@ -845,8 +917,21 @@ function _M:get(key, opts, cb, ...)
 
     -- opts validation
 
-    local ttl, neg_ttl, resurrect_ttl, l1_serializer, shm_set_tries =
-        check_opts(self, opts)
+    local ttl, neg_ttl, serve_stale, resurrect_ttl, l1_serializer,
+          shm_set_tries = check_opts(self, opts)
+
+    if serve_stale and stale_data then
+        -- we'd rather get stale data than run a callback in this case,
+        -- so schedule the callback in the background and serve stale data
+
+        thread_spawn(run_callback, self, key, namespaced_key, stale_data, ttl,
+                     neg_ttl, true --[[went_stale to resurrect]],
+                     l1_serializer, resurrect_ttl, shm_set_tries,
+                     true --[[abort on lock]],
+                     cb, ...)
+
+        return stale_data, nil, 4
+    end
 
     local err, went_stale, is_stale
     data, err, went_stale, is_stale = get_shm_set_lru(self, key, namespaced_key,
@@ -855,12 +940,23 @@ function _M:get(key, opts, cb, ...)
         return nil, err
     end
 
-    if data ~= nil and not went_stale then
+    if data ~= nil and (not went_stale or serve_stale) then
+        -- return stale data if:
+        --   * we want stale data rather than wait for a callback to run
+        --   * it was previously resurrected (and not "just became stale")
         if data == CACHE_MISS_SENTINEL_LRU then
             data = nil
         end
 
-        return data, nil, is_stale and 4 or 2
+        if serve_stale then
+            thread_spawn(run_callback, self, key, namespaced_key, stale_data,
+                         ttl, neg_ttl, true --[[went_stale to resurrect]],
+                         l1_serializer, resurrect_ttl, shm_set_tries,
+                         true --[[abort on lock]],
+                         cb, ...)
+        end
+
+        return data, nil, (is_stale or serve_stale) and 4 or 2
     end
 
     -- not in shm either
@@ -868,7 +964,7 @@ function _M:get(key, opts, cb, ...)
 
     return run_callback(self, key, namespaced_key, data, ttl, neg_ttl,
                         went_stale, l1_serializer, resurrect_ttl,
-                        shm_set_tries, cb, ...)
+                        shm_set_tries, false, cb, ...)
 end
 
 
@@ -884,6 +980,7 @@ local function run_thread(self, ops, from, to)
                                                       ctx.l1_serializer,
                                                       ctx.resurrect_ttl,
                                                       ctx.shm_set_tries,
+                                                      false,
                                                       ctx.cb, ctx.arg)
     end
 end
@@ -1004,8 +1101,8 @@ function _M:get_bulk(bulk, opts)
             res[res_idx + 2] = 1
 
         else
-            local pok, ttl, neg_ttl, resurrect_ttl, l1_serializer, shm_set_tries
-                = pcall(check_opts, self, b_opts)
+            local pok, ttl, neg_ttl, serve_stale, resurrect_ttl, l1_serializer,
+                  shm_set_tries = pcall(check_opts, self, b_opts)
             if not pok then
                 -- strip the stacktrace
                 local err = ttl:match("mlcache%.lua:%d+:%s(.*)")
@@ -1244,8 +1341,8 @@ function _M:set(key, opts, value)
         -- restrict this key to the current namespace, so we isolate this
         -- mlcache instance from potential other instances using the same
         -- shm
-        local ttl, neg_ttl, _, l1_serializer, shm_set_tries = check_opts(self,
-                                                                         opts)
+        local ttl, neg_ttl, _, _, l1_serializer, shm_set_tries =
+            check_opts(self, opts)
         local namespaced_key = self.name .. key
 
         if self.dict_miss then
