@@ -1,9 +1,10 @@
-# vim: st=2 sts=2 sw=2 et:
+# vim:st=2 sts=2 sw=2 et:
 
+os: linux
+dist: xenial
 sudo: false
 
 language: c
-
 compiler: gcc
 
 notifications:
@@ -17,45 +18,55 @@ cache:
 env:
   global:
     - JOBS=2
-    - LUAROCKS_VER=3.1.2
+    - LUAROCKS=3.1.3
     - TEST_NGINX_RANDOMIZE=1
   matrix:
-    - OPENRESTY_VER=1.11.2.2
-    - OPENRESTY_VER=1.11.2.3
-    - OPENRESTY_VER=1.11.2.4
-    - OPENRESTY_VER=1.11.2.5
-    - OPENRESTY_VER=1.13.6.1
-    - OPENRESTY_VER=1.13.6.2
-    - OPENRESTY_VER=1.15.8.1
-    - LINT=1
+    - OPENRESTY=1.15.8.1
+    - OPENRESTY=1.13.6.2
+    - OPENRESTY=1.13.6.1
+    - OPENRESTY=1.11.2.5
+    - OPENRESTY=1.11.2.4
+    - OPENRESTY=1.11.2.3
+    - OPENRESTY=1.11.2.2
+
+before_install:
+  - mkdir -p download-cache
+  - if [ ! -f download-cache/openresty-$OPENRESTY.tar.gz ]; then wget -O download-cache/openresty-$OPENRESTY.tar.gz https://openresty.org/download/openresty-$OPENRESTY.tar.gz; fi
+  - if [ ! -f download-cache/luarocks-$LUAROCKS.tar.gz ]; then wget -O download-cache/luarocks-$LUAROCKS.tar.gz https://luarocks.github.io/luarocks/releases/luarocks-$LUAROCKS.tar.gz; fi
+  - if [ ! -f download-cache/cpanm ]; then wget -O download-cache/cpanm https://cpanmin.us/; fi
+  - tar -zxf download-cache/openresty-$OPENRESTY.tar.gz
+  - tar -zxf download-cache/luarocks-$LUAROCKS.tar.gz
 
 install:
-  - mkdir -p download-cache
-  - if [ -z "$OPENRESTY_VER" ]; then export OPENRESTY_VER=1.15.8.1; fi
-  - if [ ! -f download-cache/openresty-$OPENRESTY_VER.tar.gz ]; then wget -O download-cache/openresty-$OPENRESTY_VER.tar.gz https://openresty.org/download/openresty-$OPENRESTY_VER.tar.gz; fi
-  - if [ ! -f download-cache/luarocks-$LUAROCKS_VER.tar.gz ]; then wget -O download-cache/luarocks-$LUAROCKS_VER.tar.gz https://luarocks.github.io/luarocks/releases/luarocks-$LUAROCKS_VER.tar.gz; fi
-  - if [ ! -f download-cache/cpanm ]; then wget -O download-cache/cpanm https://cpanmin.us/; fi
-  - tar -zxf download-cache/openresty-$OPENRESTY_VER.tar.gz
-  - tar -zxf download-cache/luarocks-$LUAROCKS_VER.tar.gz
   - chmod +x download-cache/cpanm
-  - download-cache/cpanm --notest Test::Nginx > build.log 2>&1 || (cat build.log && exit 1)
+  - download-cache/cpanm --notest Test::Nginx >build.log 2>&1 || (cat build.log && exit 1)
   - download-cache/cpanm --notest --local-lib=$TRAVIS_BUILD_DIR/perl5 local::lib && eval $(perl -I $TRAVIS_BUILD_DIR/perl5/lib/perl5/ -Mlocal::lib)
-  - pushd openresty-$OPENRESTY_VER
-  - export OPENRESTY_PREFIX=$TRAVIS_BUILD_DIR/openresty-$OPENRESTY_VER
-  - ./configure --prefix=$OPENRESTY_PREFIX --without-http_ssl_module -j$JOBS > build.log 2>&1 || (cat build.log && exit 1)
-  - make -j$JOBS > build.log 2>&1 || (cat build.log && exit 1)
-  - make install > build.log 2>&1 || (cat build.log && exit 1)
+  - pushd openresty-$OPENRESTY
+  - export OPENRESTY_PREFIX=$TRAVIS_BUILD_DIR/openresty-$OPENRESTY
+  - ./configure --prefix=$OPENRESTY_PREFIX --without-http_ssl_module -j$JOBS >build.log 2>&1 || (cat build.log && exit 1)
+  - make -j$JOBS >build.log 2>&1 || (cat build.log && exit 1)
+  - make install >build.log 2>&1 || (cat build.log && exit 1)
   - popd
-  - pushd luarocks-$LUAROCKS_VER
-  - export LUAROCKS_PREFIX=$TRAVIS_BUILD_DIR/luarocks-$LUAROCKS_VER
-  - ./configure --prefix=$LUAROCKS_PREFIX --with-lua=$OPENRESTY_PREFIX/luajit --with-lua-include=$OPENRESTY_PREFIX/luajit/include/luajit-2.1 --lua-suffix=jit
-  - make build
-  - make install
+  - pushd luarocks-$LUAROCKS
+  - export LUAROCKS_PREFIX=$TRAVIS_BUILD_DIR/luarocks-$LUAROCKS
+  - ./configure --prefix=$LUAROCKS_PREFIX --with-lua=$OPENRESTY_PREFIX/luajit --with-lua-include=$OPENRESTY_PREFIX/luajit/include/luajit-2.1 --lua-suffix=jit >build.log 2>&1 || (cat build.log && exit 1)
+  - make build >build.log 2>&1 || (cat build.log && exit 1)
+  - make install >build.log 2>&1 || (cat build.log && exit 1)
   - popd
   - export PATH=$OPENRESTY_PREFIX/nginx/sbin:$LUAROCKS_PREFIX/bin:$PATH
-  - luarocks install luacheck > build.log 2>&1 || (cat build.log && exit 1)
-  - luarocks --version
   - nginx -V
 
+stages:
+  - lint
+  - test
+
+jobs:
+  include:
+    - stage: lint
+      script:
+        - luarocks install luacheck >build.log 2>&1 || (cat build.log && exit 1)
+        - luarocks --version
+        - luacheck lib/
+
 script:
-  - if [ -z "$LINT" ]; then prove -j$JOBS -r t; else luacheck lib; fi
+  - prove -j$JOBS -r t/
