@@ -491,7 +491,8 @@ local function set_shm(self, shm_key, value, ttl, neg_ttl, flags, shm_set_tries,
     end
 
     if forcible then
-        ngx_log(WARN, self.name .. " is out of memory! Cached result for " .. shm_key .. " evicted other valid entries.")
+        ngx_log(WARN, self.name .. " is out of memory! Cached result for "
+                .. shm_key .. " evicted other valid entries.")
     end
 
     if not ok then
