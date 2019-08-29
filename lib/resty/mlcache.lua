@@ -480,7 +480,7 @@ local function set_shm(self, shm_key, value, ttl, neg_ttl, flags, shm_set_tries,
 
     local tries = 0
     local ok, err
-    local evictions = 0
+    local forcible_set = false
 
     while tries < shm_set_tries do
         tries = tries + 1
@@ -490,12 +490,12 @@ local function set_shm(self, shm_key, value, ttl, neg_ttl, flags, shm_set_tries,
             if err ~= "no memory" then
                 break
             else
-                evictions = evictions + 1
+                forcible_set = true
             end
         end
     end
 
-    if evictions > 0 then
+    if forcible_set then
         ngx_log(WARN, self.name .. " is out of memory! Cached result for " .. shm_key .. " evicted other valid entries.")
     end
 
