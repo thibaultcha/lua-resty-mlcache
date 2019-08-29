@@ -480,14 +480,23 @@ local function set_shm(self, shm_key, value, ttl, neg_ttl, flags, shm_set_tries,
 
     local tries = 0
     local ok, err
+    local evictions = 0
 
     while tries < shm_set_tries do
         tries = tries + 1
 
         ok, err = dict:set(shm_key, shm_value, ttl, flags or 0)
-        if ok or err and err ~= "no memory" then
-            break
+        if ok or err then
+            if err ~= "no memory" then
+                break
+            else
+                evictions = evictions + 1
+            end
         end
+    end
+
+    if evictions > 0 then
+        ngx_log(WARN, self.name .. " is out of memory! Cached result for " .. shm_key .. " evicted other valid entries.")
     end
 
     if not ok then
