@@ -479,23 +479,18 @@ local function set_shm(self, shm_key, value, ttl, neg_ttl, flags, shm_set_tries,
     -- try again to try to trigger more LRU evictions.
 
     local tries = 0
-    local ok, err
-    local forcible_set = false
+    local ok, err, forcible
 
     while tries < shm_set_tries do
         tries = tries + 1
 
-        ok, err = dict:set(shm_key, shm_value, ttl, flags or 0)
-        if ok or err then
-            if err ~= "no memory" then
-                break
-            else
-                forcible_set = true
-            end
+        ok, err, forcible = dict:set(shm_key, shm_value, ttl, flags or 0)
+        if ok or err and err ~= "no memory" then
+            break
         end
     end
 
-    if forcible_set then
+    if forcible then
         ngx_log(WARN, self.name .. " is out of memory! Cached result for " .. shm_key .. " evicted other valid entries.")
     end
 
