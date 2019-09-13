@@ -166,6 +166,7 @@ Tests matrix results:
 | `1.13.6.1`  | :heavy_check_mark:
 | `1.13.6.2`  | :heavy_check_mark:
 | `1.15.8.1`  | :heavy_check_mark:
+| `1.15.8.2`  | :heavy_check_mark:
 | >           | not tested
 
 [Back to TOC](#table-of-contents)
