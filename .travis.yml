@@ -10,15 +10,6 @@ compiler: gcc
 notifications:
   email: false
 
-arch:
-  - amd64
-  - arm64
-
-cache:
-  directories:
-  - download-cache
-  - perl5
-
 addons:
   apt:
     packages:
@@ -26,21 +17,30 @@ addons:
     - libssl-dev
     - zlib1g-dev
 
+cache:
+  directories:
+  - download-cache
+  - perl5
+
+arch:
+- amd64
+- arm64
+
 env:
   global:
     - JOBS=2
     - LUAROCKS=3.2.1
     - TEST_NGINX_RANDOMIZE=1
     - OPENRESTY=1.15.8.2
-
-matrix:
-  include:
-   - os: linux
-     arch: amd64
-     env: OPENRESTY=1.15.8.2
-   - os: linux
-     arch: arm64
-     env: OPENRESTY=1.15.8.2
+  matrix:
+    - env: OPENRESTY=1.15.8.2
+    - env: OPENRESTY=1.15.8.1
+    - env: OPENRESTY=1.13.6.2
+    - env: OPENRESTY=1.13.6.1
+    - env: OPENRESTY=1.11.2.5
+    - env: OPENRESTY=1.11.2.4
+    - env: OPENRESTY=1.11.2.3
+    - env: OPENRESTY=1.11.2.2
 
 before_install:
   - mkdir -p download-cache
@@ -52,32 +52,32 @@ before_install:
 
 install:
   - chmod +x download-cache/cpanm
-  - download-cache/cpanm --notest Test::Nginx
+  - download-cache/cpanm --notest Test::Nginx >build.log 2>&1 || (cat build.log && exit 1)
   - download-cache/cpanm --notest --local-lib=$TRAVIS_BUILD_DIR/perl5 local::lib && eval $(perl -I $TRAVIS_BUILD_DIR/perl5/lib/perl5/ -Mlocal::lib)
   - pushd openresty-$OPENRESTY
   - export OPENRESTY_PREFIX=$TRAVIS_BUILD_DIR/openresty-$OPENRESTY
-  - ./configure --prefix=$OPENRESTY_PREFIX --without-http_ssl_module -j$JOBS
-  - make -j$JOBS
-  - make install
+  - ./configure --prefix=$OPENRESTY_PREFIX --without-http_ssl_module -j$JOBS >build.log 2>&1 || (cat build.log && exit 1)
+  - make -j$JOBS >build.log 2>&1 || (cat build.log && exit 1)
+  - make install >build.log 2>&1 || (cat build.log && exit 1)
   - popd
   - pushd luarocks-$LUAROCKS
   - export LUAROCKS_PREFIX=$TRAVIS_BUILD_DIR/luarocks-$LUAROCKS
-  - ./configure --prefix=$LUAROCKS_PREFIX --with-lua=$OPENRESTY_PREFIX/luajit --with-lua-include=$OPENRESTY_PREFIX/luajit/include/luajit-2.1 --lua-suffix=jit
-  - make build
-  - make install
+  - ./configure --prefix=$LUAROCKS_PREFIX --with-lua=$OPENRESTY_PREFIX/luajit --with-lua-include=$OPENRESTY_PREFIX/luajit/include/luajit-2.1 --lua-suffix=jit >build.log 2>&1 || (cat build.log && exit 1)
+  - make build >build.log 2>&1 || (cat build.log && exit 1)
+  - make install >build.log 2>&1 || (cat build.log && exit 1)
   - popd
   - export PATH=$OPENRESTY_PREFIX/nginx/sbin:$LUAROCKS_PREFIX/bin:$PATH
   - nginx -V
 
 stages:
-  - test
   - lint
+  - test
 
 jobs:
   include:
     - stage: lint
       script:
-        - luarocks install luacheck
+        - luarocks install luacheck >build.log 2>&1 || (cat build.log && exit 1)
         - luarocks --version
         - luacheck lib/
 
