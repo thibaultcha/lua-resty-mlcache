@@ -23,8 +23,25 @@ cache:
   - perl5
 
 arch:
-- amd64
-- arm64
+  - amd64
+  - arm64
+matrix:
+  exclude:
+   - arch: arm64
+     env: OPENRESTY=1.13.6.2
+   - arch: arm64
+     env: OPENRESTY=1.13.6.2
+   - arch: arm64
+     env: OPENRESTY=1.13.6.1
+   - arch: arm64
+     env: OPENRESTY=1.11.2.5
+   - arch: arm64
+     env: OPENRESTY=1.11.2.4
+   - arch: arm64
+     env: OPENRESTY=1.11.2.3
+   - arch: arm64
+     env: OPENRESTY=1.11.2.2
+
 
 env:
   global:
@@ -33,14 +50,14 @@ env:
     - TEST_NGINX_RANDOMIZE=1
     - OPENRESTY=1.15.8.2
   matrix:
-    - env: OPENRESTY=1.15.8.2
-    - env: OPENRESTY=1.15.8.1
-    - env: OPENRESTY=1.13.6.2
-    - env: OPENRESTY=1.13.6.1
-    - env: OPENRESTY=1.11.2.5
-    - env: OPENRESTY=1.11.2.4
-    - env: OPENRESTY=1.11.2.3
-    - env: OPENRESTY=1.11.2.2
+    - OPENRESTY=1.15.8.2
+    - OPENRESTY=1.15.8.1
+    - OPENRESTY=1.13.6.2
+    - OPENRESTY=1.13.6.1
+    - OPENRESTY=1.11.2.5
+    - OPENRESTY=1.11.2.4
+    - OPENRESTY=1.11.2.3
+    - OPENRESTY=1.11.2.2
 
 before_install:
   - mkdir -p download-cache
