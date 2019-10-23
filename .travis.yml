@@ -30,8 +30,6 @@ matrix:
    - arch: arm64
      env: OPENRESTY=1.13.6.2
    - arch: arm64
-     env: OPENRESTY=1.13.6.2
-   - arch: arm64
      env: OPENRESTY=1.13.6.1
    - arch: arm64
      env: OPENRESTY=1.11.2.5
@@ -100,3 +98,4 @@ jobs:
 
 script:
   - prove -j$JOBS -r t/
+.
