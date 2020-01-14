@@ -59,10 +59,19 @@ function _M.new(shm, debug)
         return nil, "no such lua_shared_dict: " .. shm
     end
 
+    local idx, err = dict:get(INDEX_KEY)
+    if err then
+        return nil, "failed to get index: " .. err
+    end
+
+    if idx ~= nil and type(idx) ~= "number" then
+        return nil, "index is not a number, shm tampered with"
+    end
+
     local self    = {
         dict      = dict,
         pid       = debug and 0 or worker_pid(),
-        idx       = 0,
+        idx       = idx or 0,
         callbacks = {},
     }
 

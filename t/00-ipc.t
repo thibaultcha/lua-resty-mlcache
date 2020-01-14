@@ -7,7 +7,7 @@ workers(1);
 
 plan tests => repeat_each() * (blocks() * 5);
 
-my $pwd = cwd();
+our $pwd = cwd();
 
 our $HttpConfig = qq{
     lua_package_path "$pwd/lib/?.lua;;";
@@ -57,7 +57,78 @@ no such lua_shared_dict: foo
 
 
 
-=== TEST 2: broadcast() sends an event through shm
+=== TEST 2: new() picks up current idx if already set
+This ensures new workers spawned during a master process' lifecycle do not
+attempt to replay all events from index 0.
+https://github.com/thibaultcha/lua-resty-mlcache/issues/87
+--- http_config eval
+qq{
+    lua_package_path "$::pwd/lib/?.lua;;";
+    lua_shared_dict  ipc 1m;
+
+    init_by_lua_block {
+        require "resty.core"
+
+        assert(ngx.shared.ipc:set("lua-resty-ipc:index", 42))
+    }
+}
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache_ipc = require "resty.mlcache.ipc"
+
+            local ipc, err = mlcache_ipc.new("ipc")
+            if not ipc then
+                error(err)
+            end
+
+            ngx.say(ipc.idx)
+        }
+    }
+--- request
+GET /t
+--- response_body
+42
+--- no_error_log
+[warn]
+[error]
+[crit]
+
+
+
+=== TEST 3: new() checks type of current idx if already set
+--- http_config eval
+qq{
+    lua_package_path "$::pwd/lib/?.lua;;";
+    lua_shared_dict  ipc 1m;
+
+    init_by_lua_block {
+        require "resty.core"
+
+        assert(ngx.shared.ipc:set("lua-resty-ipc:index", "42"))
+    }
+}
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache_ipc = require "resty.mlcache.ipc"
+
+            local ipc, err = mlcache_ipc.new("ipc")
+            ngx.say(err)
+        }
+    }
+--- request
+GET /t
+--- response_body
+index is not a number, shm tampered with
+--- no_error_log
+[warn]
+[error]
+[crit]
+
+
+
+=== TEST 4: broadcast() sends an event through shm
 --- http_config eval
 qq{
     $::HttpConfig
@@ -91,7 +162,7 @@ received event from my_channel: hello world
 
 
 
-=== TEST 3: broadcast() runs event callback in protected mode
+=== TEST 5: broadcast() runs event callback in protected mode
 --- http_config eval
 qq{
     $::HttpConfig
@@ -125,7 +196,7 @@ lua entry thread aborted: runtime error
 
 
 
-=== TEST 4: poll() catches invalid timeout arg
+=== TEST 6: poll() catches invalid timeout arg
 --- http_config eval
 qq{
     $::HttpConfig
@@ -154,7 +225,7 @@ timeout must be a number
 
 
 
-=== TEST 5: poll() catches up with all events
+=== TEST 7: poll() catches up with all events
 --- http_config eval
 qq{
     $::HttpConfig
@@ -192,7 +263,7 @@ received event from my_channel: msg 3
 
 
 
-=== TEST 6: poll() does not execute events from self (same pid)
+=== TEST 8: poll() does not execute events from self (same pid)
 --- http_config eval
 qq{
     $::HttpConfig
@@ -225,7 +296,7 @@ received event from my_channel: hello world
 
 
 
-=== TEST 7: poll() runs all registered callbacks for a channel
+=== TEST 9: poll() runs all registered callbacks for a channel
 --- http_config eval
 qq{
     $::HttpConfig
@@ -269,7 +340,7 @@ callback 3 from my_channel: hello world
 
 
 
-=== TEST 8: poll() exits when no event to poll
+=== TEST 10: poll() exits when no event to poll
 --- http_config eval
 qq{
     $::HttpConfig
@@ -300,7 +371,7 @@ callback from my_channel: hello world
 
 
 
-=== TEST 9: poll() runs all callbacks from all channels
+=== TEST 11: poll() runs all callbacks from all channels
 --- http_config eval
 qq{
     $::HttpConfig
@@ -353,7 +424,7 @@ callback 2 from other_channel: hello ipc 2
 
 
 
-=== TEST 10: poll() catches tampered shm (by third-party users)
+=== TEST 12: poll() catches tampered shm (by third-party users)
 --- http_config eval
 qq{
     $::HttpConfig
@@ -386,7 +457,7 @@ index is not a number, shm tampered with
 
 
 
-=== TEST 11: poll() retries getting an event until timeout
+=== TEST 13: poll() retries getting an event until timeout
 --- http_config eval
 qq{
     $::HttpConfig
@@ -431,7 +502,7 @@ GET /t
 
 
 
-=== TEST 12: poll() reaches custom timeout
+=== TEST 14: poll() reaches custom timeout
 --- http_config eval
 qq{
     $::HttpConfig
@@ -471,7 +542,7 @@ GET /t
 
 
 
-=== TEST 13: poll() logs errors and continue if event has been tampered with
+=== TEST 15: poll() logs errors and continue if event has been tampered with
 --- http_config eval
 qq{
     $::HttpConfig
@@ -509,7 +580,7 @@ GET /t
 
 
 
-=== TEST 14: poll() is safe to be called in contexts that don't support ngx.sleep()
+=== TEST 16: poll() is safe to be called in contexts that don't support ngx.sleep()
 --- http_config eval
 qq{
     $::HttpConfig
@@ -553,7 +624,7 @@ GET /t
 
 
 
-=== TEST 15: poll() JITs
+=== TEST 17: poll() JITs
 --- http_config eval
 qq{
     $::HttpConfig
@@ -585,7 +656,7 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):2 loop\]/
 
 
 
-=== TEST 16: broadcast() JITs
+=== TEST 18: broadcast() JITs
 --- http_config eval
 qq{
     $::HttpConfig
