@@ -1,5 +1,6 @@
 # Table of Contents
 
+- [2.4.1](#2.4.1)
 - [2.4.0](#2.4.0)
 - [2.3.0](#2.3.0)
 - [2.2.1](#2.2.1)
@@ -10,6 +11,18 @@
 - [2.0.0](#2.0.0)
 - [1.0.1](#1.0.1)
 - [1.0.0](#1.0.0)
+
+## [2.4.1]
+
+> Released on: 2020/01/17
+
+#### Fixed
+
+- The IPC module now avoids replaying all events when spawning new workers, and
+  gets initialized with the latest event index instead.
+  [#88](https://github.com/thibaultcha/lua-resty-mlcache/pull/88)
+
+[Back to TOC](#table-of-contents)
 
 ## [2.4.0]
 
@@ -202,6 +215,7 @@ Initial release.
 
 [Back to TOC](#table-of-contents)
 
+[2.4.1]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.4.0...2.4.1
 [2.4.0]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.3.0...2.4.0
 [2.3.0]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.2.1...2.3.0
 [2.2.1]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.2.0...2.2.1
