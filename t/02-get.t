@@ -1245,122 +1245,7 @@ is stale in LRU: nil
 
 
 
-=== TEST 27: get() returns hit level
---- http_config eval: $::HttpConfig
---- config
-    location = /t {
-        content_by_lua_block {
-            local mlcache = require "resty.mlcache"
-
-            local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
-
-            local function cb()
-                return 123
-            end
-
-            local _, _, hit_lvl = assert(cache:get("key", nil, cb))
-            ngx.say("hit level from callback: ", hit_lvl)
-
-            _, _, hit_lvl = assert(cache:get("key", nil, cb))
-            ngx.say("hit level from LRU: ", hit_lvl)
-
-            -- delete from LRU
-
-            cache.lru:delete("key")
-
-            _, _, hit_lvl = assert(cache:get("key", nil, cb))
-            ngx.say("hit level from shm: ", hit_lvl)
-        }
-    }
---- request
-GET /t
---- response_body
-hit level from callback: 3
-hit level from LRU: 1
-hit level from shm: 2
---- no_error_log
-[error]
-
-
-
-=== TEST 28: get() returns hit level for nil hits
---- http_config eval: $::HttpConfig
---- config
-    location = /t {
-        content_by_lua_block {
-            local mlcache = require "resty.mlcache"
-
-            local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
-
-            local function cb()
-                return nil
-            end
-
-            local _, _, hit_lvl = cache:get("key", nil, cb)
-            ngx.say("hit level from callback: ", hit_lvl)
-
-            _, _, hit_lvl = cache:get("key", nil, cb)
-            ngx.say("hit level from LRU: ", hit_lvl)
-
-            -- delete from LRU
-
-            cache.lru:delete("key")
-
-            _, _, hit_lvl = cache:get("key", nil, cb)
-            ngx.say("hit level from shm: ", hit_lvl)
-        }
-    }
---- request
-GET /t
---- response_body
-hit level from callback: 3
-hit level from LRU: 1
-hit level from shm: 2
---- no_error_log
-[error]
-
-
-
-=== TEST 29: get() returns hit level for boolean false hits
---- skip_eval: 3: t::Util::skip_openresty('<', '1.11.2.3')
---- http_config eval: $::HttpConfig
---- config
-    location = /t {
-        content_by_lua_block {
-            local mlcache = require "resty.mlcache"
-
-            local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
-
-            local function cb()
-                return false
-            end
-
-            local _, _, hit_lvl = cache:get("key", nil, cb)
-            ngx.say("hit level from callback: ", hit_lvl)
-
-            _, _, hit_lvl = cache:get("key", nil, cb)
-            ngx.say("hit level from LRU: ", hit_lvl)
-
-            -- delete from LRU
-
-            cache.lru:delete("key")
-
-            _, _, hit_lvl = cache:get("key", nil, cb)
-            ngx.say("hit level from shm: ", hit_lvl)
-        }
-    }
---- request
-GET /t
---- response_body
-hit level from callback: 3
-hit level from LRU: 1
-hit level from shm: 2
---- no_error_log
-[error]
-
-
-
-=== TEST 30: get() JITs when hit coming from LRU
+=== TEST 27: get() JITs when hit coming from LRU
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1390,7 +1275,7 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 
 
 
-=== TEST 31: get() JITs when hit of scalar value coming from shm
+=== TEST 28: get() JITs when hit of scalar value coming from shm
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1412,28 +1297,25 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
             end
 
             for i = 1, 10e2 do
-                local data, err, hit_lvl = assert(cache:get("number", nil, cb_number))
+                local data, err = assert(cache:get("number", nil, cb_number))
                 assert(err == nil)
                 assert(data == 123456)
-                assert(hit_lvl == (i == 1 and 3 or 2))
 
                 cache.lru:delete("number")
             end
 
             for i = 1, 10e2 do
-                local data, err, hit_lvl = assert(cache:get("string", nil, cb_string))
+                local data, err = assert(cache:get("string", nil, cb_string))
                 assert(err == nil)
                 assert(data == "hello")
-                assert(hit_lvl == (i == 1 and 3 or 2))
 
                 cache.lru:delete("string")
             end
 
             for i = 1, 10e2 do
-                local data, err, hit_lvl = cache:get("bool", nil, cb_bool)
+                local data, err = cache:get("bool", nil, cb_bool)
                 assert(err == nil)
                 assert(data == false)
-                assert(hit_lvl == (i == 1 and 3 or 2))
 
                 cache.lru:delete("bool")
             end
@@ -1446,15 +1328,15 @@ GET /t
 --- error_log eval
 [
     qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):18 loop\]/,
-    qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):27 loop\]/,
-    qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):36 loop\]/,
+    qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):26 loop\]/,
+    qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):34 loop\]/,
 ]
 --- no_error_log
 [error]
 
 
 
-=== TEST 32: get() JITs when hit of table value coming from shm
+=== TEST 29: get() JITs when hit of table value coming from shm
 --- SKIP: blocked until custom table serializer
 --- http_config eval: $::HttpConfig
 --- config
@@ -1488,7 +1370,7 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):18 loop\]/
 
 
 
-=== TEST 33: get() JITs when miss coming from LRU
+=== TEST 30: get() JITs when miss coming from LRU
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1519,7 +1401,7 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 
 
 
-=== TEST 34: get() JITs when miss coming from shm
+=== TEST 31: get() JITs when miss coming from shm
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1552,7 +1434,7 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 
 
 
-=== TEST 35: get() callback can return nil + err (string)
+=== TEST 32: get() callback can return nil + err (string)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1592,7 +1474,7 @@ cb2 return values: foo an error occurred again
 
 
 
-=== TEST 36: get() callback can return nil + err (non-string) safely
+=== TEST 33: get() callback can return nil + err (non-string) safely
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1631,7 +1513,7 @@ cb2 return values: foo table: 0x[[:xdigit:]]+
 
 
 
-=== TEST 37: get() callback can return nil + err (table) and will call __tostring
+=== TEST 34: get() callback can return nil + err (table) and will call __tostring
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1664,7 +1546,7 @@ cb return values: nil hello from __tostring
 
 
 
-=== TEST 38: get() callback's 3th return value can override the ttl
+=== TEST 35: get() callback's 3th return value can override the ttl
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1715,7 +1597,7 @@ in callback 2
 
 
 
-=== TEST 39: get() callback's 3th return value can override the neg_ttl
+=== TEST 36: get() callback's 3th return value can override the neg_ttl
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1766,7 +1648,7 @@ in callback 2
 
 
 
-=== TEST 40: get() ignores invalid callback 3rd return value (not number)
+=== TEST 37: get() ignores invalid callback 3rd return value (not number)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1845,7 +1727,7 @@ in positive callback
 
 
 
-=== TEST 41: get() passes 'resty_lock_opts' for L3 calls
+=== TEST 38: get() passes 'resty_lock_opts' for L3 calls
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1888,7 +1770,7 @@ was given 'opts.resty_lock_opts': true
 
 
 
-=== TEST 42: get() errors on lock timeout
+=== TEST 39: get() errors on lock timeout
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1919,10 +1801,9 @@ was given 'opts.resty_lock_opts': true
 
             -- cache in shm
 
-            local data, err, hit_lvl = cache_1:get("my_key", nil, cb)
+            local data, err = cache_1:get("my_key", nil, cb)
             assert(data == 123)
             assert(err == nil)
-            assert(hit_lvl == 3)
 
             -- make shm + LRU expire
 
@@ -1935,10 +1816,10 @@ was given 'opts.resty_lock_opts': true
 
             local t2 = ngx.thread.spawn(function()
                 -- make this mlcache wait on other's callback, and timeout
-                local data, err, hit_lvl = cache_2:get("my_key", nil, cb)
+                local data, err, flags = cache_2:get("my_key", nil, cb)
                 ngx.say("data: ", data)
                 ngx.say("err: ", err)
-                ngx.say("hit_lvl: ", hit_lvl)
+                ngx.say("flags: ", flags)
             end)
 
             assert(ngx.thread.wait(t1))
@@ -1946,10 +1827,13 @@ was given 'opts.resty_lock_opts': true
 
             ngx.say()
             ngx.say("-> subsequent get()")
-            data, err, hit_lvl = cache_2:get("my_key", nil, cb, nil, 123)
+            data, err = cache_2:get("my_key", nil, cb, nil, 123)
             ngx.say("data: ", data)
             ngx.say("err: ", err)
-            ngx.say("hit_lvl: ", hit_lvl) -- should be 1 since LRU instances are shared by mlcache namespace, and t1 finished
+
+            -- should be in L1 since LRU instances are shared by mlcache
+            -- namespaces, and t1 finished
+            assert(cache_2.lru:get("my_key") == data, "not in L1 cache")
         }
     }
 --- request
@@ -1957,18 +1841,17 @@ GET /t
 --- response_body
 data: nil
 err: could not acquire callback lock: timeout
-hit_lvl: nil
+flags: nil
 
 -> subsequent get()
 data: 456
 err: nil
-hit_lvl: 1
 --- no_error_log
 [error]
 
 
 
-=== TEST 43: get() returns data even if failed to set in shm
+=== TEST 40: get() returns data even if failed to set in shm
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -2020,7 +1903,7 @@ qr/\[warn\] .*? could not write to lua_shared_dict 'cache_shm' after 3 tries \(n
 
 
 
-=== TEST 44: get() errors on invalid opts.shm_set_tries
+=== TEST 41: get() errors on invalid opts.shm_set_tries
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -2060,7 +1943,7 @@ opts.shm_set_tries must be >= 1
 
 
 
-=== TEST 45: get() with default shm_set_tries to LRU evict items when a large value is being cached
+=== TEST 42: get() with default shm_set_tries to LRU evict items when a large value is being cached
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -2131,7 +2014,7 @@ callback was called: 1 times
 
 
 
-=== TEST 46: get() respects instance opts.shm_set_tries to LRU evict items when a large value is being cached
+=== TEST 43: get() respects instance opts.shm_set_tries to LRU evict items when a large value is being cached
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -2204,7 +2087,7 @@ callback was called: 1 times
 
 
 
-=== TEST 47: get() accepts opts.shm_set_tries to LRU evict items when a large value is being cached
+=== TEST 44: get() accepts opts.shm_set_tries to LRU evict items when a large value is being cached
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -2277,7 +2160,7 @@ callback was called: 1 times
 
 
 
-=== TEST 48: get() caches data in L1 LRU even if failed to set in shm
+=== TEST 45: get() caches data in L1 LRU even if failed to set in shm
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -2341,7 +2224,7 @@ is stale: true
 
 
 
-=== TEST 49: get() does not cache value in LRU indefinitely when retrieved from shm on last ms (see GH PR #58)
+=== TEST 46: get() does not cache value in LRU indefinitely when retrieved from shm on last ms (see GH PR #58)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -2374,25 +2257,25 @@ is stale: true
             -- the L1 LRU cache.
             forced_now = forced_now + 0.2
 
-            local data, err, hit_lvl = cache:get("key", nil, cb)
+            local data, err, flags = cache:get("key", nil, cb)
             assert(data == 42, err or "invalid data value: " .. data)
 
-            ngx.say("+0.200s hit_lvl: ", hit_lvl)
+            ngx.say("+0.200s hit_lvl: ", mlcache.hit_level(flags))
 
             -- the value is not cached in LRU (too short ttl anyway)
 
-            data, err, hit_lvl = cache:get("key", nil, cb)
+            data, err, flags = cache:get("key", nil, cb)
             assert(data == 42, err or "invalid data value: " .. data)
 
-            ngx.say("+0.200s hit_lvl: ", hit_lvl)
+            ngx.say("+0.200s hit_lvl: ", mlcache.hit_level(flags))
 
             -- make it expire in shm (real wait)
             ngx.sleep(0.201)
 
-            data, err, hit_lvl = cache:get("key", nil, cb, 91)
+            data, err, flags = cache:get("key", nil, cb, 91)
             assert(data == 91, err or "invalid data value: " .. data)
 
-            ngx.say("+0.201s hit_lvl: ", hit_lvl)
+            ngx.say("+0.201s hit_lvl: ", mlcache.hit_level(flags))
         }
     }
 --- request
@@ -2406,7 +2289,7 @@ GET /t
 
 
 
-=== TEST 50: get() bypass cache for negative callback TTL
+=== TEST 47: get() bypass cache for negative callback TTL
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -2430,17 +2313,15 @@ GET /t
 
             -- don't cache our value (runs pos_cb)
 
-            local data, err, hit_level = cache:get("pos_key", opts, pos_cb)
+            local data, err = cache:get("pos_key", opts, pos_cb)
             assert(err == nil, err)
             assert(data == 1)
-            assert(hit_level == 3)
 
             -- pos_cb should run again
 
             data, err = cache:get("pos_key", opts, pos_cb)
             assert(err == nil, err)
             assert(data == 1)
-            assert(hit_level == 3)
 
             ngx.say("Test B: negative TTL return value for negative data bypasses cache")
 
@@ -2449,14 +2330,12 @@ GET /t
             data, err = cache:get("neg_key", opts, neg_cb)
             assert(err == nil, err)
             assert(data == nil)
-            assert(hit_level == 3)
 
             -- neg_cb should run again
 
             data, err = cache:get("neg_key", opts, neg_cb)
             assert(err == nil, err)
             assert(data == nil)
-            assert(hit_level == 3)
         }
     }
 --- request

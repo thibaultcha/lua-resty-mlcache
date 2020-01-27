@@ -130,25 +130,31 @@ opts.resurrect_ttl must be >= 0
             ngx.say()
 
             ngx.say("-> stale get()")
-            data, err, hit_lvl = cache:get("key", nil, cb)
+            data, err, flags = cache:get("key", nil, cb)
             ngx.say("data: ", data)
             ngx.say("err: ", err)
-            ngx.say("hit_lvl: ", hit_lvl)
+            ngx.say("hit_lvl: ", mlcache.hit_level(flags))
+            ngx.say("resurrected: ", mlcache.resurrected(flags))
+            ngx.say("stale: ", mlcache.stale(flags))
 
             ngx.say()
             ngx.say("-> subsequent get() from LRU")
-            data, err, hit_lvl = cache:get("key", nil, cb)
+            data, err, flags = cache:get("key", nil, cb)
             ngx.say("data: ", data)
             ngx.say("err: ", err)
-            ngx.say("hit_lvl: ", hit_lvl)
+            ngx.say("hit_lvl: ", mlcache.hit_level(flags))
+            ngx.say("resurrected: ", mlcache.resurrected(flags))
+            ngx.say("stale: NYI") -- NYI in L1
 
             ngx.say()
             ngx.say("-> subsequent get() from shm")
             cache.lru:delete("key")
-            data, err, hit_lvl = cache:get("key", nil, cb)
+            data, err, flags = cache:get("key", nil, cb)
             ngx.say("data: ", data)
             ngx.say("err: ", err)
-            ngx.say("hit_lvl: ", hit_lvl)
+            ngx.say("hit_lvl: ", mlcache.hit_level(flags))
+            ngx.say("resurrected: ", mlcache.resurrected(flags))
+            ngx.say("stale: ", mlcache.stale(flags))
 
             ngx.say()
             ngx.say("sleeping for 0.2s...")
@@ -156,10 +162,12 @@ opts.resurrect_ttl must be >= 0
             ngx.say()
 
             ngx.say("-> successfull callback get()")
-            data, err, hit_lvl = cache:get("key", nil, cb)
+            data, err, flags = cache:get("key", nil, cb)
             ngx.say("data: ", data)
             ngx.say("err: ", err)
-            ngx.say("hit_lvl: ", hit_lvl)
+            ngx.say("hit_lvl: ", mlcache.hit_level(flags))
+            ngx.say("resurrected: ", mlcache.resurrected(flags))
+            ngx.say("stale: ", mlcache.stale(flags))
         }
     }
 --- request
@@ -173,17 +181,23 @@ sleeping for 0.3s...
 -> stale get()
 data: 123
 err: nil
-hit_lvl: 4
+hit_lvl: 2
+resurrected: true
+stale: true
 
 -> subsequent get() from LRU
 data: 123
 err: nil
 hit_lvl: 1
+resurrected: false
+stale: NYI
 
 -> subsequent get() from shm
 data: 123
 err: nil
-hit_lvl: 4
+hit_lvl: 2
+resurrected: false
+stale: true
 
 sleeping for 0.2s...
 
@@ -191,6 +205,8 @@ sleeping for 0.2s...
 data: 456
 err: nil
 hit_lvl: 3
+resurrected: false
+stale: false
 --- no_error_log
 [error]
 
@@ -237,10 +253,10 @@ hit_lvl: 3
             ngx.say()
 
             ngx.say("-> stale get()")
-            data, err, hit_lvl = cache:get("key", nil, cb)
+            data, err, flags = cache:get("key", nil, cb)
             ngx.say("data: ", data)
             ngx.say("err: ", err)
-            ngx.say("hit_lvl: ", hit_lvl)
+            ngx.say("resurrected: ", mlcache.resurrected(flags))
         }
     }
 --- request
@@ -254,7 +270,7 @@ sleeping for 0.3s...
 -> stale get()
 data: 123
 err: nil
-hit_lvl: 4
+resurrected: true
 --- error_log eval
 qr/\[warn\] .*? callback returned an error \(some error\) but stale value found/
 
@@ -298,12 +314,12 @@ qr/\[warn\] .*? callback returned an error \(some error\) but stale value found/
             ngx.say()
 
             ngx.say("-> stale get()")
-            data, err, hit_lvl = cache:get("key", {
+            data, err, flags = cache:get("key", {
                 resurrect_ttl = 0.2
             }, cb)
             ngx.say("data: ", data)
             ngx.say("err: ", err)
-            ngx.say("hit_lvl: ", hit_lvl)
+            ngx.say("resurrected: ", mlcache.resurrected(flags))
 
             ngx.say()
             ngx.say("sleeping for 0.2s...")
@@ -311,10 +327,10 @@ qr/\[warn\] .*? callback returned an error \(some error\) but stale value found/
             ngx.say()
 
             ngx.say("-> subsequent stale get()")
-            data, err, hit_lvl = cache:get("key", nil, cb)
+            data, err, flags = cache:get("key", nil, cb)
             ngx.say("data: ", data)
             ngx.say("err: ", err)
-            ngx.say("hit_lvl: ", hit_lvl)
+            ngx.say("resurrected: ", mlcache.resurrected(flags))
         }
     }
 --- request
@@ -328,14 +344,14 @@ sleeping for 0.3s...
 -> stale get()
 data: 123
 err: nil
-hit_lvl: 4
+resurrected: true
 
 sleeping for 0.2s...
 
 -> subsequent stale get()
 data: 123
 err: nil
-hit_lvl: 4
+resurrected: true
 --- no_error_log
 [error]
 
@@ -382,17 +398,18 @@ hit_lvl: 4
             ngx.say()
 
             ngx.say("-> stale get()")
-            data, err, hit_lvl = cache:get("key", nil, cb)
+            data, err, flags = cache:get("key", nil, cb)
             ngx.say("data: ", data)
             ngx.say("err: ", err)
-            ngx.say("hit_lvl: ", hit_lvl)
+            ngx.say("hit_lvl: ", mlcache.hit_level(flags))
+            ngx.say("resurrected: ", mlcache.resurrected(flags))
 
             ngx.say()
             ngx.say("-> subsequent get()")
-            data, err, hit_lvl = cache:get("key", nil, cb)
+            data, err, flags = cache:get("key", nil, cb)
             ngx.say("data: ", data)
             ngx.say("err: ", err)
-            ngx.say("hit_lvl: ", hit_lvl)
+            ngx.say("hit_lvl: ", mlcache.hit_level(flags))
 
             ngx.say()
             ngx.say("sleeping for 0.2s...")
@@ -400,10 +417,10 @@ hit_lvl: 4
             ngx.say()
 
             ngx.say("-> successfull callback get()")
-            data, err, hit_lvl = cache:get("key", nil, cb)
+            data, err, flags = cache:get("key", nil, cb)
             ngx.say("data: ", data)
             ngx.say("err: ", err)
-            ngx.say("hit_lvl: ", hit_lvl)
+            ngx.say("hit_lvl: ", mlcache.hit_level(flags))
         }
     }
 --- request
@@ -417,7 +434,8 @@ sleeping for 0.3s...
 -> stale get()
 data: nil
 err: nil
-hit_lvl: 4
+hit_lvl: 2
+resurrected: true
 
 -> subsequent get()
 data: nil
@@ -477,17 +495,18 @@ hit_lvl: 3
             ngx.say()
 
             ngx.say("-> stale get()")
-            data, err, hit_lvl = cache:get("key", nil, cb)
+            data, err, flags = cache:get("key", nil, cb)
             ngx.say("data: ", data)
             ngx.say("err: ", err)
-            ngx.say("hit_lvl: ", hit_lvl)
+            ngx.say("hit_lvl: ", mlcache.hit_level(flags))
+            ngx.say("resurrected: ", mlcache.resurrected(flags))
 
             ngx.say()
             ngx.say("-> subsequent get()")
-            data, err, hit_lvl = cache:get("key", nil, cb)
+            data, err, flags = cache:get("key", nil, cb)
             ngx.say("data: ", data)
             ngx.say("err: ", err)
-            ngx.say("hit_lvl: ", hit_lvl)
+            ngx.say("hit_lvl: ", mlcache.hit_level(flags))
 
             ngx.say()
             ngx.say("sleeping for 0.2s...")
@@ -495,10 +514,10 @@ hit_lvl: 3
             ngx.say()
 
             ngx.say("-> successfull callback get()")
-            data, err, hit_lvl = cache:get("key", nil, cb)
+            data, err, flags = cache:get("key", nil, cb)
             ngx.say("data: ", data)
             ngx.say("err: ", err)
-            ngx.say("hit_lvl: ", hit_lvl)
+            ngx.say("hit_lvl: ", mlcache.hit_level(flags))
         }
     }
 --- request
@@ -512,7 +531,8 @@ sleeping for 0.3s...
 -> stale get()
 data: nil
 err: nil
-hit_lvl: 4
+hit_lvl: 2
+resurrected: true
 
 -> subsequent get()
 data: nil
@@ -569,17 +589,18 @@ hit_lvl: 3
             ngx.say()
 
             ngx.say("-> stale get()")
-            data, err, hit_lvl = cache:get("key", nil, cb)
+            data, err, flags = cache:get("key", nil, cb)
             ngx.say("data: ", data)
             ngx.say("err: ", err)
-            ngx.say("hit_lvl: ", hit_lvl)
+            ngx.say("hit_lvl: ", mlcache.hit_level(flags))
+            ngx.say("resurrected: ", mlcache.resurrected(flags))
 
             ngx.say()
             ngx.say("-> subsequent get()")
-            data, err, hit_lvl = cache:get("key", nil, cb)
+            data, err, flags = cache:get("key", nil, cb)
             ngx.say("data: ", data)
             ngx.say("err: ", err)
-            ngx.say("hit_lvl: ", hit_lvl)
+            ngx.say("hit_lvl: ", mlcache.hit_level(flags))
 
             ngx.say()
             ngx.say("sleeping for 0.2s...")
@@ -587,10 +608,10 @@ hit_lvl: 3
             ngx.say()
 
             ngx.say("-> successfull callback get()")
-            data, err, hit_lvl = cache:get("key", nil, cb)
+            data, err, flags = cache:get("key", nil, cb)
             ngx.say("data: ", data)
             ngx.say("err: ", err)
-            ngx.say("hit_lvl: ", hit_lvl)
+            ngx.say("hit_lvl: ", mlcache.hit_level(flags))
         }
     }
 --- request
@@ -604,7 +625,8 @@ sleeping for 0.3s...
 -> stale get()
 data: 123
 err: nil
-hit_lvl: 4
+hit_lvl: 2
+resurrected: true
 
 -> subsequent get()
 data: 123
@@ -663,18 +685,17 @@ hit_lvl: 3
             ngx.say()
 
             ngx.say("-> stale get()")
-            data, err, hit_lvl = cache:get("key", nil, cb)
+            data, err = cache:get("key", nil, cb)
             ngx.say("data: ", data)
             ngx.say("err: ", string.match(err, "callback threw an error:"), " ",
                     string.match(err, "thrown error"))
-            ngx.say("hit_lvl: ", hit_lvl)
 
             ngx.say()
             ngx.say("-> subsequent get()")
-            data, err, hit_lvl = cache:get("key", nil, cb)
+            data, err, flags = cache:get("key", nil, cb)
             ngx.say("data: ", data)
             ngx.say("err: ", err)
-            ngx.say("hit_lvl: ", hit_lvl)
+            ngx.say("hit_lvl: ", mlcache.hit_level(flags))
         }
     }
 --- request
@@ -688,7 +709,6 @@ sleeping for 0.3s...
 -> stale get()
 data: nil
 err: callback threw an error: thrown error
-hit_lvl: nil
 
 -> subsequent get()
 data: 123
@@ -732,10 +752,10 @@ hit_lvl: 3
 
             -- cache in shm
 
-            local data, err, hit_lvl = cache_1:get("my_key", nil, cb)
+            local data, err, flags = cache_1:get("my_key", nil, cb)
             assert(data == 123)
             assert(err == nil)
-            assert(hit_lvl == 3)
+            assert(mlcache.hit_level(flags) == 3)
 
             -- make shm + LRU expire
 
@@ -750,10 +770,12 @@ hit_lvl: 3
             local t2 = ngx.thread.spawn(function()
                 -- make this mlcache wait on other's callback, and timeout
 
-                local data, err, hit_lvl = cache_2:get("my_key", nil, cb)
+                local data, err, flags = cache_2:get("my_key", nil, cb)
                 ngx.say("data: ", data)
                 ngx.say("err: ", err)
-                ngx.say("hit_lvl: ", hit_lvl)
+                ngx.say("hit_lvl: ", mlcache.hit_level(flags))
+                ngx.say("resurrected: ", mlcache.resurrected(flags))
+                ngx.say("stale: ", mlcache.stale(flags))
             end)
 
             assert(ngx.thread.wait(t1))
@@ -761,10 +783,10 @@ hit_lvl: 3
 
             ngx.say()
             ngx.say("-> subsequent get()")
-            data, err, hit_lvl = cache_2:get("my_key", nil, cb, nil, 123)
+            data, err, flags = cache_2:get("my_key", nil, cb, nil, 123)
             ngx.say("data: ", data)
             ngx.say("err: ", err)
-            ngx.say("hit_lvl: ", hit_lvl) -- should be 1 since LRU instances are shared by mlcache namespace, and t1 finished
+            ngx.say("hit_lvl: ", mlcache.hit_level(flags)) -- should be 1 since LRU instances are shared by mlcache namespace, and t1 finished
         }
     }
 --- request
@@ -772,7 +794,9 @@ GET /t
 --- response_body
 data: 123
 err: nil
-hit_lvl: 4
+hit_lvl: 2
+resurrected: false
+stale: true
 
 -> subsequent get()
 data: 456
@@ -818,10 +842,10 @@ qr/\[warn\] .*? could not acquire callback lock: timeout/
 
             -- cache in shm
 
-            local data, err, hit_lvl = cache_1:get("my_key", nil, cb)
+            local data, err, flags = cache_1:get("my_key", nil, cb)
             assert(data == nil)
             assert(err == nil)
-            assert(hit_lvl == 3)
+            assert(mlcache.hit_level(flags) == 3)
 
             -- make shm + LRU expire
 
@@ -836,10 +860,12 @@ qr/\[warn\] .*? could not acquire callback lock: timeout/
             local t2 = ngx.thread.spawn(function()
                 -- make this mlcache wait on other's callback, and timeout
 
-                local data, err, hit_lvl = cache_2:get("my_key", nil, cb)
+                local data, err, flags = cache_2:get("my_key", nil, cb)
                 ngx.say("data: ", data)
                 ngx.say("err: ", err)
-                ngx.say("hit_lvl: ", hit_lvl)
+                ngx.say("hit_lvl: ", mlcache.hit_level(flags))
+                ngx.say("resurrected: ", mlcache.resurrected(flags))
+                ngx.say("stale: ", mlcache.stale(flags))
             end)
 
             assert(ngx.thread.wait(t1))
@@ -847,10 +873,10 @@ qr/\[warn\] .*? could not acquire callback lock: timeout/
 
             ngx.say()
             ngx.say("-> subsequent get()")
-            data, err, hit_lvl = cache_2:get("my_key", nil, cb)
+            data, err, flags = cache_2:get("my_key", nil, cb)
             ngx.say("data: ", data)
             ngx.say("err: ", err)
-            ngx.say("hit_lvl: ", hit_lvl) -- should be 1 since LRU instances are shared by mlcache namespace, and t1 finished
+            ngx.say("hit_lvl: ", mlcache.hit_level(flags)) -- should be 1 since LRU instances are shared by mlcache namespace, and t1 finished
         }
     }
 --- request
@@ -858,7 +884,9 @@ GET /t
 --- response_body
 data: nil
 err: nil
-hit_lvl: 4
+hit_lvl: 2
+resurrected: false
+stale: true
 
 -> subsequent get()
 data: nil
@@ -890,7 +918,11 @@ qr/\[warn\] .*? could not acquire callback lock: timeout/
                     return 123
                 end
 
-                return nil, "some error"
+                if cb_called == 2 then
+                    return nil, "some error"
+                end
+
+                return 456
             end
 
             ngx.say("-> 1st get()")
@@ -907,17 +939,16 @@ qr/\[warn\] .*? could not acquire callback lock: timeout/
             ngx.say()
 
             ngx.say("-> stale get()")
-            data, err, hit_lvl = cache:get("key", nil, cb)
+            data, err = cache:get("key", nil, cb)
             ngx.say("data: ", data)
             ngx.say("err: ", err)
-            ngx.say("hit_lvl: ", hit_lvl)
 
             ngx.say()
             ngx.say("-> subsequent get()")
-            data, err, hit_lvl = cache:get("key", nil, cb)
+            data, err, flags = cache:get("key", nil, cb)
             ngx.say("data: ", data)
             ngx.say("err: ", err)
-            ngx.say("hit_lvl: ", hit_lvl)
+            ngx.say("hit_lvl: ", mlcache.hit_level(flags))
         }
     }
 --- request
@@ -931,12 +962,11 @@ sleeping for 0.3s...
 -> stale get()
 data: nil
 err: some error
-hit_lvl: nil
 
 -> subsequent get()
-data: nil
-err: some error
-hit_lvl: nil
+data: 456
+err: nil
+hit_lvl: 3
 --- no_error_log
 [error]
 
@@ -1017,9 +1047,9 @@ qr/\[warn\] .*? callback returned an error \(table: 0x[[:xdigit:]]+\)/
             ngx.sleep(0.201)
             forced_now = forced_now + 0.201
 
-            local data, err, hit_lvl = cache:get("key", nil, cb)
+            local data, err, flags = cache:get("key", nil, cb)
             assert(data == 42, err or "invalid data value: " .. data)
-            assert(hit_lvl == 4, "hit_lvl should be 4 (resurrected data), got: " .. hit_lvl)
+            assert(mlcache.resurrected(flags), "resurrected bit should be set")
 
             -- value is now resurrected
 
@@ -1029,19 +1059,18 @@ qr/\[warn\] .*? callback returned an error \(table: 0x[[:xdigit:]]+\)/
             -- advance 0.2 second in the future, and simulate another :get()
             -- call; the L2 shm entry will still be alive (as its clock is
             -- not faked), but mlcache will compute a remaining_ttl of 0;
-            -- in such cases we should still see the stale flag returned
-            -- as hit_lvl
+            -- in such cases we should still see the stale bit in flags
             forced_now = forced_now + 0.2
 
-            local data, err, hit_lvl = cache:get("key", nil, cb)
+            local data, err, flags = cache:get("key", nil, cb)
             assert(data == 42, err or "invalid data value: " .. data)
 
-            ngx.say("+0.200s after resurrect hit_lvl: ", hit_lvl)
+            ngx.say("+0.200s after resurrect stale bit: ", mlcache.stale(flags))
         }
     }
 --- request
 GET /t
 --- response_body
-+0.200s after resurrect hit_lvl: 4
++0.200s after resurrect stale bit: true
 --- no_error_log
 [error]

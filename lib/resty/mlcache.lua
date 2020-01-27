@@ -1,5 +1,6 @@
 -- vim: st=4 sts=4 sw=4 et:
 
+local bit        = require "bit"
 local cjson      = require "cjson.safe"
 local new_tab    = require "table.new"
 local lrucache   = require "resty.lrucache"
@@ -23,6 +24,8 @@ end
 
 
 local now          = ngx.now
+local band         = bit.band
+local bor          = bit.bor
 local min          = math.min
 local ceil         = math.ceil
 local fmt          = string.format
@@ -48,6 +51,16 @@ local LOCK_KEY_PREFIX = "lua-resty-mlcache:lock:"
 local LRU_INSTANCES = setmetatable({}, { __mode = "v" })
 local SHM_SET_DEFAULT_TRIES = 3
 local BULK_DEFAULT_CONCURRENCY = 3
+
+
+local RET_FLAGS = {
+    hit_l1      = 0x00000001,
+    hit_l2      = 0x00000002,
+    hit_l3      = 0x00000004,
+    forcible_l2 = 0x00000010,
+    resurrected = 0x00000100,
+    stale       = 0x00000200,
+}
 
 
 local TYPES_LOOKUP = {
@@ -479,12 +492,12 @@ local function set_shm(self, shm_key, value, ttl, neg_ttl, flags, shm_set_tries,
     -- try again to try to trigger more LRU evictions.
 
     local tries = 0
-    local ok, err
+    local ok, err, forcible
 
     while tries < shm_set_tries do
         tries = tries + 1
 
-        ok, err = dict:set(shm_key, shm_value, ttl, flags or 0)
+        ok, err, forcible = dict:set(shm_key, shm_value, ttl, flags or 0)
         if ok or err and err ~= "no memory" then
             break
         end
@@ -502,20 +515,22 @@ local function set_shm(self, shm_key, value, ttl, neg_ttl, flags, shm_set_tries,
                       "memory, consider increasing 'opts.shm_set_tries'")
     end
 
-    return true
+    return true, nil, forcible
 end
 
 
 local function set_shm_set_lru(self, key, shm_key, value, ttl, neg_ttl, flags,
                                shm_set_tries, l1_serializer, throw_no_mem)
 
-    local ok, err = set_shm(self, shm_key, value, ttl, neg_ttl, flags,
-                            shm_set_tries, throw_no_mem)
+    local ok, err, forcible = set_shm(self, shm_key, value, ttl, neg_ttl, flags,
+                                      shm_set_tries, throw_no_mem)
     if not ok then
         return nil, err
     end
 
-    return set_lru(self, key, value, ttl, neg_ttl, l1_serializer)
+    local val, err = set_lru(self, key, value, ttl, neg_ttl, l1_serializer)
+
+    return val, err, forcible
 end
 
 
@@ -665,13 +680,13 @@ local function check_opts(self, opts)
 end
 
 
-local function unlock_and_ret(lock, res, err, hit_lvl)
+local function unlock_and_ret(lock, res, err, flags)
     local ok, lerr = lock:unlock()
     if not ok and lerr ~= "unlocked" then
         return nil, "could not unlock callback: " .. lerr
     end
 
-    return res, err, hit_lvl
+    return res, err, flags
 end
 
 
@@ -707,7 +722,13 @@ local function run_callback(self, key, shm_key, data, ttl, neg_ttl,
                 data2 = nil
             end
 
-            return unlock_and_ret(lock, data2, nil, stale2 and 4 or 2)
+            local ret_flags = RET_FLAGS.hit_l2
+
+            if stale2 then
+                ret_flags = bor(ret_flags, RET_FLAGS.stale)
+            end
+
+            return unlock_and_ret(lock, data2, nil, ret_flags)
         end
     end
 
@@ -732,7 +753,7 @@ local function run_callback(self, key, shm_key, data, ttl, neg_ttl,
         -- went_stale is true, hence the value cannot be set in the LRU
         -- cache, and cannot be CACHE_MISS_SENTINEL_LRU
 
-        return data, nil, 4
+        return data, nil, bor(RET_FLAGS.hit_l2, RET_FLAGS.stale)
     end
 
     -- still not in shm, we are the 1st worker to hold the lock, and thus
@@ -764,11 +785,12 @@ local function run_callback(self, key, shm_key, data, ttl, neg_ttl,
                       "value found in shm will be resurrected for ",
                       resurrect_ttl, "s (resurrect_ttl)")
 
-        local res_data, res_err = set_shm_set_lru(self, key, shm_key,
-                                                  data, resurrect_ttl,
-                                                  resurrect_ttl,
-                                                  SHM_FLAGS.stale,
-                                                  shm_set_tries, l1_serializer)
+        local res_data, res_err, forcible = set_shm_set_lru(self, key, shm_key,
+                                                            data, resurrect_ttl,
+                                                            resurrect_ttl,
+                                                            SHM_FLAGS.stale,
+                                                            shm_set_tries,
+                                                            l1_serializer)
         if res_err then
             ngx_log(WARN, "could not resurrect stale data (", res_err, ")")
         end
@@ -777,7 +799,16 @@ local function run_callback(self, key, shm_key, data, ttl, neg_ttl,
             res_data = nil
         end
 
-        return unlock_and_ret(lock, res_data, nil, 4)
+        -- a resurrected item is also stale by nature
+        local ret_flags = bor(RET_FLAGS.hit_l2,
+                              RET_FLAGS.resurrected,
+                              RET_FLAGS.stale)
+
+        if forcible then
+            ret_flags = bor(ret_flags, RET_FLAGS.forcible_l2)
+        end
+
+        return unlock_and_ret(lock, res_data, nil, ret_flags)
     end
 
     -- successful callback run returned 'data, nil, new_ttl?'
@@ -789,7 +820,7 @@ local function run_callback(self, key, shm_key, data, ttl, neg_ttl,
     if type(new_ttl) == "number" then
         if new_ttl < 0 then
             -- bypass cache
-            return unlock_and_ret(lock, data, nil, 3)
+            return unlock_and_ret(lock, data, nil, RET_FLAGS.hit_l3)
         end
 
         if data == nil then
@@ -800,8 +831,11 @@ local function run_callback(self, key, shm_key, data, ttl, neg_ttl,
         end
     end
 
-    data, err = set_shm_set_lru(self, key, shm_key, data, ttl, neg_ttl, nil,
-                                shm_set_tries, l1_serializer)
+    local forcible
+
+    data, err, forcible = set_shm_set_lru(self, key, shm_key, data, ttl,
+                                          neg_ttl, nil, shm_set_tries,
+                                          l1_serializer)
     if err then
         return unlock_and_ret(lock, nil, err)
     end
@@ -810,9 +844,15 @@ local function run_callback(self, key, shm_key, data, ttl, neg_ttl,
         data = nil
     end
 
+    local ret_flags = RET_FLAGS.hit_l3
+
+    if forcible then
+        ret_flags = bor(ret_flags, RET_FLAGS.forcible_l2)
+    end
+
     -- unlock and return
 
-    return unlock_and_ret(lock, data, nil, 3)
+    return unlock_and_ret(lock, data, nil, ret_flags)
 end
 
 
@@ -829,11 +869,11 @@ function _M:get(key, opts, cb, ...)
 
     local data = self.lru:get(key)
     if data == CACHE_MISS_SENTINEL_LRU then
-        return nil, nil, 1
+        return nil, nil, RET_FLAGS.hit_l1
     end
 
     if data ~= nil then
-        return data, nil, 1
+        return data, nil, RET_FLAGS.hit_l1
     end
 
     -- not in worker's LRU cache, need shm lookup
@@ -860,7 +900,13 @@ function _M:get(key, opts, cb, ...)
             data = nil
         end
 
-        return data, nil, is_stale and 4 or 2
+        local ret_flags = RET_FLAGS.hit_l2
+
+        if is_stale then
+            ret_flags = bor(ret_flags, RET_FLAGS.stale)
+        end
+
+        return data, nil, ret_flags
     end
 
     -- not in shm either
@@ -877,14 +923,14 @@ local function run_thread(self, ops, from, to)
     for i = from, to do
         local ctx = ops[i]
 
-        ctx.data, ctx.err, ctx.hit_lvl = run_callback(self, ctx.key,
-                                                      ctx.shm_key, ctx.data,
-                                                      ctx.ttl, ctx.neg_ttl,
-                                                      ctx.went_stale,
-                                                      ctx.l1_serializer,
-                                                      ctx.resurrect_ttl,
-                                                      ctx.shm_set_tries,
-                                                      ctx.cb, ctx.arg)
+        ctx.data, ctx.err, ctx.flags = run_callback(self, ctx.key,
+                                                    ctx.shm_key, ctx.data,
+                                                    ctx.ttl, ctx.neg_ttl,
+                                                    ctx.went_stale,
+                                                    ctx.l1_serializer,
+                                                    ctx.resurrect_ttl,
+                                                    ctx.shm_set_tries,
+                                                    ctx.cb, ctx.arg)
     end
 end
 
@@ -921,9 +967,9 @@ local function bulk_res_iter(res, i)
 
     local data = res[idx]
     local err = res[idx + 1]
-    local hit_lvl = res[idx + 2]
+    local flags = res[idx + 2]
 
-    return i, data, err, hit_lvl
+    return i, data, err, flags
 end
 
 
@@ -973,7 +1019,7 @@ function _M:get_bulk(bulk, opts)
     -- { "key", opts, cb, arg }
     --
     -- res
-    -- { data, "err", hit_lvl }
+    -- { data, "err", flags }
 
     for i = 1, n_bulk, 4 do
         local b_key = bulk[i]
@@ -1060,7 +1106,7 @@ function _M:get_bulk(bulk, opts)
                 ctx.shm_set_tries = shm_set_tries
                 ctx.data = data
                 ctx.err = nil
-                ctx.hit_lvl = nil
+                ctx.flags = nil
 
                 cb_ctxs[n_cbs] = ctx
             end
@@ -1165,7 +1211,7 @@ function _M:get_bulk(bulk, opts)
 
         res[ctx_res_idx] = ctx.data
         res[ctx_res_idx + 1] = ctx.err
-        res[ctx_res_idx + 2] = ctx.hit_lvl
+        res[ctx_res_idx + 2] = ctx.flags
 
         tablepool.release("bulk_cb_ctx", ctx, true) -- no clear tab
     end
@@ -1373,6 +1419,56 @@ function _M:update(timeout)
     end
 
     return true
+end
+
+
+function _M.stale(flags)
+    if type(flags) ~= "number" then
+        error("flags must be a number", 2)
+    end
+
+    return band(flags, RET_FLAGS.stale) ~= 0
+end
+
+
+function _M.resurrected(flags)
+    if type(flags) ~= "number" then
+        error("flags must be a number", 2)
+    end
+
+    return band(flags, RET_FLAGS.resurrected) ~= 0
+end
+
+
+function _M.forcible(flags)
+    if type(flags) ~= "number" then
+        error("flags must be a number", 2)
+    end
+
+    -- L1: NYI in lua-resty-lrucache
+    -- L2: forcible in shdict API
+    return false, band(flags, RET_FLAGS.forcible_l2) ~= 0
+end
+
+
+function _M.hit_level(flags)
+    if type(flags) ~= "number" then
+        error("flags must be a number", 2)
+    end
+
+    if band(flags, RET_FLAGS.hit_l1) ~= 0 then
+        return 1
+    end
+
+    if band(flags, RET_FLAGS.hit_l2) ~= 0 then
+        return 2
+    end
+
+    if band(flags, RET_FLAGS.hit_l3) ~= 0 then
+        return 3
+    end
+
+    error("could not extract hit_level from given flags")
 end
 
 

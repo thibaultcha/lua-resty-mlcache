@@ -271,7 +271,7 @@ ok
             for i = 1, res.n, 3 do
                 ngx.say(tostring(res[i]), " ",
                         tostring(res[i + 1]), " ",
-                        tostring(res[i + 2]))
+                        mlcache.hit_level(res[i + 2]))
             end
         }
     }
@@ -316,7 +316,7 @@ GET /t
             for i = 1, res.n, 3 do
                 ngx.say(tostring(res[i]), " ",
                         tostring(res[i + 1]), " ",
-                        tostring(res[i + 2]))
+                        mlcache.hit_level(res[i + 2]))
             end
         }
     }
@@ -357,7 +357,7 @@ GET /t
             for i = 1, res.n, 3 do
                 ngx.say(tostring(res[i]), " ",
                         tostring(res[i + 1]), " ",
-                        tostring(res[i + 2]))
+                        mlcache.hit_level(res[i + 2]))
             end
         }
     }
@@ -397,7 +397,7 @@ GET /t
             for i = 1, res.n, 3 do
                 ngx.say(tostring(res[i]), " ",
                         tostring(res[i + 1]), " ",
-                        tostring(res[i + 2]))
+                        mlcache.hit_level(res[i + 2]))
             end
         }
     }
@@ -439,7 +439,7 @@ GET /t
             for i = 1, res.n, 3 do
                 ngx.say(tostring(res[i]), " ",
                         tostring(res[i + 1]), " ",
-                        tostring(res[i + 2]))
+                        mlcache.hit_level(res[i + 2]))
             end
         }
     }
@@ -482,7 +482,7 @@ nil nil 3
             for i = 1, res.n, 3 do
                 ngx.say(tostring(res[i]), " ",
                         tostring(res[i + 1]), " ",
-                        tostring(res[i + 2]))
+                        mlcache.hit_level(res[i + 2]))
             end
         }
     }
@@ -527,7 +527,7 @@ GET /t
             for i = 1, res.n, 3 do
                 ngx.say(tostring(res[i]), " ",
                         tostring(res[i + 1]), " ",
-                        tostring(res[i + 2]))
+                        mlcache.hit_level(res[i + 2]))
             end
         }
     }
@@ -562,9 +562,15 @@ nil nil 3
             end
 
             for i = 1, res.n, 3 do
-                ngx.say(tostring(res[i]), " ",
-                        tostring(res[i + 1]), " ",
-                        tostring(res[i + 2]))
+                if res[i + 1] then
+                    ngx.say(tostring(res[i]), " ",
+                            tostring(res[i + 1]), " ",
+                            tostring(res[i + 2]))
+                else
+                    ngx.say(tostring(res[i]), " ",
+                            tostring(res[i + 1]), " ",
+                            mlcache.hit_level(res[i + 2]))
+                end
             end
         }
     }
@@ -599,9 +605,15 @@ nil some error nil
             end
 
             for i = 1, res.n, 3 do
-                ngx.say(tostring(res[i]), " ",
-                        tostring(res[i + 1]), " ",
-                        tostring(res[i + 2]))
+                if res[i + 1] then
+                    ngx.say(tostring(res[i]), " ",
+                            tostring(res[i + 1]), " ",
+                            tostring(res[i + 2]))
+                else
+                    ngx.say(tostring(res[i]), " ",
+                            tostring(res[i + 1]), " ",
+                            mlcache.hit_level(res[i + 2]))
+                end
             end
         }
     }
@@ -649,7 +661,7 @@ stack traceback:
             for i = 1, res.n, 3 do
                 ngx.say(tostring(res[i]), " ",
                         tostring(res[i + 1]), " ",
-                        tostring(res[i + 2]))
+                        mlcache.hit_level(res[i + 2]))
             end
         }
     }
@@ -687,7 +699,7 @@ GET /t
             for i = 1, res.n, 3 do
                 ngx.say(tostring(res[i]), " ",
                         tostring(res[i + 1]), " ",
-                        tostring(res[i + 2]))
+                        mlcache.hit_level(res[i + 2]))
             end
 
             ngx.say()
@@ -771,7 +783,7 @@ options at index 6 for operation 2 are invalid: opts.neg_ttl must be a number
             for i = 1, res.n, 3 do
                 ngx.say(tostring(res[i]), " ",
                         tostring(res[i + 1]), " ",
-                        tostring(res[i + 2]))
+                        mlcache.hit_level(res[i + 2]))
             end
 
             ngx.say()
@@ -817,7 +829,7 @@ key_b: nil (ttl: 0.8)
             for i = 1, res.n, 3 do
                 ngx.say(tostring(res[i]), " ",
                         tostring(res[i + 1]), " ",
-                        tostring(res[i + 2]))
+                        mlcache.hit_level(res[i + 2]))
             end
 
             ngx.say()
@@ -877,7 +889,8 @@ key_b: 2 (ttl: 1)
             for i = 1, res.n, 3 do
                 ngx.say(tostring(res[i]), " ",
                         tostring(res[i + 1]), " ",
-                        tostring(res[i + 2]))
+                        mlcache.hit_level(res[i + 2]), " ",
+                        mlcache.resurrected(res[i + 2]))
             end
 
             ngx.sleep(0.1)
@@ -892,8 +905,8 @@ key_b: 2 (ttl: 1)
 --- request
 GET /t
 --- response_body_like
-1 nil 4
-3 nil 3
+1 nil 2 true
+3 nil 3 false
 
 key_a: 1 ttl: 0\.(?:2|1)\d+
 key_b: 3 ttl: 0\.(?:1|0)\d+
@@ -939,7 +952,8 @@ key_b: 3 ttl: 0\.(?:1|0)\d+
             for i = 1, res.n, 3 do
                 ngx.say(tostring(res[i]), " ",
                         tostring(res[i + 1]), " ",
-                        tostring(res[i + 2]))
+                        mlcache.hit_level(res[i + 2]), " ",
+                        mlcache.resurrected(res[i + 2]))
             end
 
             ngx.sleep(0.1)
@@ -954,8 +968,8 @@ key_b: 3 ttl: 0\.(?:1|0)\d+
 --- request
 GET /t
 --- response_body_like
-1 nil 4
-3 nil 3
+1 nil 2 true
+3 nil 3 false
 
 key_a: 1 ttl: 0\.(?:2|1)\d+
 key_b: 3 ttl: 0\.(?:1|0)\d+
@@ -989,7 +1003,7 @@ key_b: 3 ttl: 0\.(?:1|0)\d+
             for i = 1, res.n, 3 do
                 ngx.say(tostring(res[i]), " ",
                         tostring(res[i + 1]), " ",
-                        tostring(res[i + 2]))
+                        mlcache.hit_level(res[i + 2]))
             end
         }
     }
@@ -1031,7 +1045,7 @@ world nil 3
             for i = 1, res.n, 3 do
                 ngx.say(tostring(res[i]), " ",
                         tostring(res[i + 1]), " ",
-                        tostring(res[i + 2]))
+                        mlcache.hit_level(res[i + 2]))
             end
         }
     }
@@ -1176,12 +1190,12 @@ could not write to lua_shared_dict 'cache_shm' after 1 tries (no memory)
                 return "hello"
             end
 
-            local t1_data, t1_hit_lvl
+            local t1_data, t1_flags
             local t2_res
 
             local t1 = ngx.thread.spawn(function()
                 local err
-                t1_data, err, t1_hit_lvl = cache_1:get("key", nil, cb, 0.3)
+                t1_data, err, t1_flags = cache_1:get("key", nil, cb, 0.3)
                 if err then
                     ngx.log(ngx.ERR, err)
                     return
@@ -1204,14 +1218,14 @@ could not write to lua_shared_dict 'cache_shm' after 1 tries (no memory)
             assert(ngx.thread.wait(t1))
             assert(ngx.thread.wait(t2))
 
-            ngx.say("t1\n", t1_data, " ", t1_hit_lvl)
+            ngx.say("t1\n", t1_data, " ", mlcache.hit_level(t1_flags))
 
             ngx.say()
             ngx.say("t2")
             for i = 1, t2_res.n, 3 do
                 ngx.say(tostring(t2_res[i]), " ",
                         tostring(t2_res[i + 1]), " ",
-                        tostring(t2_res[i + 2]))
+                        mlcache.hit_level(t2_res[i + 2]))
             end
         }
     }
@@ -1248,12 +1262,12 @@ hello nil 2
                 return "hello"
             end
 
-            local t1_data, t1_hit_lvl
+            local t1_data, t1_flags
             local t2_res
 
             local t1 = ngx.thread.spawn(function()
                 local err
-                t1_data, err, t1_hit_lvl = cache_1:get("key", nil, cb, 0.3)
+                t1_data, err, t1_flags = cache_1:get("key", nil, cb, 0.3)
                 if err then
                     ngx.log(ngx.ERR, err)
                     return
@@ -1276,14 +1290,20 @@ hello nil 2
             assert(ngx.thread.wait(t1))
             assert(ngx.thread.wait(t2))
 
-            ngx.say("t1\n", t1_data, " ", t1_hit_lvl)
+            ngx.say("t1\n", t1_data, " ", mlcache.hit_level(t1_flags))
 
             ngx.say()
             ngx.say("t2")
             for i = 1, t2_res.n, 3 do
-                ngx.say(tostring(t2_res[i]), " ",
-                        tostring(t2_res[i + 1]), " ",
-                        tostring(t2_res[i + 2]))
+                if t2_res[i + 1] then
+                    ngx.say(tostring(t2_res[i]), " ",
+                            tostring(t2_res[i + 1]), " ",
+                            tostring(t2_res[i + 2]))
+                else
+                    ngx.say(tostring(t2_res[i]), " ",
+                            tostring(t2_res[i + 1]), " ",
+                            mlcache.hit_level(t2_res[i + 2]))
+                end
             end
         }
     }
@@ -1707,7 +1727,7 @@ main thread running callbacks 1 to 1
             for i = 1, res.n, 3 do
                 ngx.say(tostring(res[i]), " ",
                         tostring(res[i + 1]), " ",
-                        tostring(res[i + 2]))
+                        mlcache.hit_level(res[i + 2]))
             end
         }
     }

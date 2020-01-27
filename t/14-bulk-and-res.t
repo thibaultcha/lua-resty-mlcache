@@ -156,7 +156,7 @@ bulk\.n: 3
             for i = 1, res.n, 3 do
                 ngx.say(tostring(res[i]), " ",
                         tostring(res[i + 1]), " ",
-                        tostring(res[i + 2]))
+                        mlcache.hit_level(res[i + 2]))
             end
         }
     }
@@ -190,8 +190,8 @@ GET /t
                 return
             end
 
-            for i, data, err, hit_lvl in mlcache.each_bulk_res(res) do
-                ngx.say(i, " ", data, " ", err, " ", hit_lvl)
+            for i, data, err, flags in mlcache.each_bulk_res(res) do
+                ngx.say(i, " ", data, " ", err, " ", mlcache.hit_level(flags))
             end
         }
     }
