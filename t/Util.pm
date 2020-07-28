@@ -1,3 +1,4 @@
+use strict;
 package t::Util;
 
 sub get_openresty_canon_version (@) {
@@ -46,3 +47,5 @@ our @EXPORT = qw(
 );
 
 1;
+
+# vim: set ft=perl:
