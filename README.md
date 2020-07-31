@@ -61,7 +61,8 @@ The cache level hierarchy is:
 - **L3**: a custom function that will only be run by a single worker
    to avoid the dog-pile effect on your database/backend
    (via [lua-resty-lock]). Values fetched via L3 will be set to the L2 cache
-   for other workers to retrieve.
+   for other workers to retrieve. This level is optional and can be disabled with
+   skip_callback option.
 
 This library has been presented at **OpenResty Con 2018**.  See the
 [Resources](#resources) section for a recording of the talk.
@@ -279,6 +280,8 @@ holding the desired options for this instance. The possible options are:
   storing it into the L1 cache. It can thus avoid your application from
   having to repeat such transformations on every request, such as creating
   tables, cdata objects, loading new Lua code, etc...
+- `skip_callback`: _optional_ boolean. Disables the callback layer cache.
+  **Default**: `false`.
 
 Example:
 
@@ -410,9 +413,11 @@ options:
   having to repeat such transformations on every request, such as creating
   tables, cdata objects, loading new Lua code, etc...
   **Default:** inherited from the instance.
+- `skip_callback`: _optional_ boolean. Disables the callback layer cache.
+  **Default**: `false`.
 
-The third argument `callback` **must** be a function. Its signature and return
-values are documented in the following example:
+The third argument `callback` **must** be a function if `skip_callback` is `false`.
+Its signature and return values are documented in the following example:
 
 ```lua
 -- arg1, arg2, and arg3 are arguments forwarded to the callback from the
@@ -452,9 +457,10 @@ When called, `get()` follows the below logic:
            in the L1 cache.
         2. if not, directly promote the value as-is in the L1 cache.
     2. if the L2 cache does not have the value (L2 miss), continue.
-3. create a [lua-resty-lock], and ensures that a single worker will run the
+3. run the L3 callback if `skip_callback` is `false`
+4. create a [lua-resty-lock], and ensures that a single worker will run the
    callback (other workers trying to access the same value will wait).
-4. a single worker runs the L3 callback (e.g. performs a database query)
+5. a single worker runs the L3 callback (e.g. performs a database query)
    1. the callback succeeds and returns a value: the value is set in the
       L2 cache, and then in the L1 cache (as-is by default, or as returned by
       `l1_serializer` if specified).
@@ -462,7 +468,7 @@ When called, `get()` follows the below logic:
       a. if `resurrect_ttl` is specified, and if the stale value is still
          available, resurrect it in the L2 cache and promote it to the L1.
       b. otherwise, `get()` returns `nil, err`.
-5. other workers that were trying to access the same value but were waiting
+6. other workers that were trying to access the same value but were waiting
    are unlocked and read the value from the L2 cache (they do not run the L3
    callback) and return it.
 
@@ -569,6 +575,8 @@ the options for this bulk lookup. The possible options are:
   single thread will execute all 6 callbacks. With a concurrency of `6` and 1
   callback, a single thread will run the callback.
   **Default**: `3`.
+- `skip_callback`: _optional_ boolean. Disables the callback layer cache.
+  **Default**: `false`.
 
 Upon success, this method returns `res`, a table containing the results of
 each lookup, and no error.
