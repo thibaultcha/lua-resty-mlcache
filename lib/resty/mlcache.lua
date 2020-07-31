@@ -186,6 +186,10 @@ function _M.new(name, shm, opts)
             error("opts must be a table", 2)
         end
 
+        if opts.skip_callback ~= nil and type(opts.skip_callback) ~= "boolean" then
+            error("opts.skip_callback must be a boolean", 2)
+        end
+
         if opts.lru_size ~= nil and type(opts.lru_size) ~= "number" then
             error("opts.lru_size must be a number", 2)
         end
@@ -314,6 +318,7 @@ function _M.new(name, shm, opts)
         lru_size        = opts.lru_size or 100,
         resty_lock_opts = opts.resty_lock_opts,
         l1_serializer   = opts.l1_serializer,
+        skip_callback   = opts.skip_callback or false,
         shm_set_tries   = opts.shm_set_tries or SHM_SET_DEFAULT_TRIES,
         debug           = opts.debug,
     }
@@ -585,6 +590,7 @@ local function check_opts(self, opts)
     local resurrect_ttl
     local l1_serializer
     local shm_set_tries
+    local skip_callback
 
     if opts ~= nil then
         if type(opts) ~= "table" then
@@ -639,6 +645,11 @@ local function check_opts(self, opts)
                 error("opts.shm_set_tries must be >= 1", 3)
             end
         end
+
+        skip_callback = opts.skip_callback
+        if skip_callback ~= nil and type(skip_callback) ~= "boolean" then
+            error("opts.skip_callback must be a boolean", 3)
+        end
     end
 
     if not ttl then
@@ -661,7 +672,11 @@ local function check_opts(self, opts)
         shm_set_tries = self.shm_set_tries
     end
 
-    return ttl, neg_ttl, resurrect_ttl, l1_serializer, shm_set_tries
+    if not skip_callback then
+        skip_callback = self.skip_callback
+    end
+
+    return ttl, neg_ttl, resurrect_ttl, l1_serializer, shm_set_tries, skip_callback
 end
 
 
@@ -821,7 +836,11 @@ function _M:get(key, opts, cb, ...)
         error("key must be a string", 2)
     end
 
-    if type(cb) ~= "function" then
+    -- opts validation
+    local ttl, neg_ttl, resurrect_ttl, l1_serializer, shm_set_tries, skip_callback
+        = check_opts(self, opts)
+
+    if skip_callback ~= true and type(cb) ~= "function" then
         error("callback must be a function", 2)
     end
 
@@ -843,11 +862,6 @@ function _M:get(key, opts, cb, ...)
     -- shm
     local namespaced_key = self.name .. key
 
-    -- opts validation
-
-    local ttl, neg_ttl, resurrect_ttl, l1_serializer, shm_set_tries =
-        check_opts(self, opts)
-
     local err, went_stale, is_stale
     data, err, went_stale, is_stale = get_shm_set_lru(self, key, namespaced_key,
                                                       l1_serializer)
@@ -864,11 +878,14 @@ function _M:get(key, opts, cb, ...)
     end
 
     -- not in shm either
-    -- single worker must execute the callback
+    if skip_callback ~= true then
+        -- single worker must execute the callback
+        return run_callback(self, key, namespaced_key, data, ttl, neg_ttl,
+            went_stale, l1_serializer, resurrect_ttl,
+            shm_set_tries, cb, ...)
+    end
 
-    return run_callback(self, key, namespaced_key, data, ttl, neg_ttl,
-                        went_stale, l1_serializer, resurrect_ttl,
-                        shm_set_tries, cb, ...)
+    return nil, nil
 end
 
 
@@ -958,6 +975,8 @@ function _M:get_bulk(bulk, opts)
             if opts.concurrency <= 0 then
                 error("opts.concurrency must be > 0", 2)
             end
+        if opts.skip_callback and type(opts.skip_callback) ~= "boolean" then
+                error("opts.skip_callback must be a boolean", 2)
         end
     end
 
@@ -985,7 +1004,7 @@ function _M:get_bulk(bulk, opts)
                   ceil(i / 4) .. " (got " .. type(b_key) .. ")", 2)
         end
 
-        if type(b_cb) ~= "function" then
+        if b_cb ~= nil and type(b_cb) ~= "function" then
             error("callback at index " .. i + 2 .. " must be a function " ..
                   "for operation " .. ceil(i / 4) .. " (got " .. type(b_cb) ..
                   ")", 2)
@@ -1004,7 +1023,7 @@ function _M:get_bulk(bulk, opts)
             res[res_idx + 2] = 1
 
         else
-            local pok, ttl, neg_ttl, resurrect_ttl, l1_serializer, shm_set_tries
+            local pok, ttl, neg_ttl, resurrect_ttl, l1_serializer, shm_set_tries, skip_callback
                 = pcall(check_opts, self, b_opts)
             if not pok then
                 -- strip the stacktrace
@@ -1035,7 +1054,7 @@ function _M:get_bulk(bulk, opts)
                 --res[res_idx + 1] = nil
                 res[res_idx + 2] = is_stale and 4 or 2
 
-            else
+            elseif opts.skip_callback ~= true and skip_callback ~= true then
                 -- not in shm either, we have to prepare a task to run the
                 -- L3 callback
 
@@ -1063,6 +1082,9 @@ function _M:get_bulk(bulk, opts)
                 ctx.hit_lvl = nil
 
                 cb_ctxs[n_cbs] = ctx
+            else
+                res[res_idx] = nil
+                res[res_idx + 1] = nil
             end
         end
 
@@ -1244,7 +1266,7 @@ function _M:set(key, opts, value)
         -- restrict this key to the current namespace, so we isolate this
         -- mlcache instance from potential other instances using the same
         -- shm
-        local ttl, neg_ttl, _, l1_serializer, shm_set_tries = check_opts(self,
+        local ttl, neg_ttl, _, l1_serializer, shm_set_tries, _ = check_opts(self,
                                                                          opts)
         local namespaced_key = self.name .. key
 
