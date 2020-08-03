@@ -334,7 +334,7 @@ nil nil nil
 
             local res, err = cache:get_bulk({
                 "key_a", nil, function() return 1 end, nil,
-                "key_b", nil, function() return 2 end, { skip_callback = true },
+                "key_b", { skip_callback = true }, function() return 2 end, nil,
                 "key_c", nil, function() return 3 end, nil,
                 n = 3,
             })
@@ -371,9 +371,9 @@ nil nil nil
             local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
 
             local res, err = cache:get_bulk({
-                "key_a", nil, function() return 1 end, { skip_callback = true },
-                "key_b", nil, function() return 2 end, { skip_callback = true },
-                "key_c", nil, function() return 3 end, { skip_callback = true },
+                "key_a", { skip_callback = true }, function() return 1 end, nil,
+                "key_b", { skip_callback = true }, function() return 2 end, nil,
+                "key_c", { skip_callback = true }, function() return 3 end, nil,
                 n = 3,
             }, { skip_callback = false })
 
@@ -393,7 +393,7 @@ nil nil nil
 GET /t
 --- response_body
 1 nil 3
-1 nil 3
+2 nil 3
 3 nil 3
 --- no_error_log
 [error]

@@ -148,7 +148,7 @@ opts must be a table
 
             local data, err = cache:get("key", nil, cb)
             if err then
-                ngx.say(err)
+                ngx.log(ngx.ERR, err)
             end
         }
     }
@@ -182,7 +182,7 @@ from shm: nil nil
 
             local data, err = cache:get("key", { skip_callback = true }, cb)
             if err then
-                ngx.say(err)
+                ngx.log(ngx.ERR, err)
             end
         }
     }
@@ -216,7 +216,7 @@ from shm: nil nil
 
             local data, err = cache:get("key", nil , cb)
             if err then
-                ngx.say(err)
+                ngx.log(ngx.ERR, err)
             end
         }
     }
