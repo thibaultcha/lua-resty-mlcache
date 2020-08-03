@@ -186,7 +186,8 @@ function _M.new(name, shm, opts)
             error("opts must be a table", 2)
         end
 
-        if opts.skip_callback ~= nil and type(opts.skip_callback) ~= "boolean" then
+        if opts.skip_callback ~= nil and
+                type(opts.skip_callback) ~= "boolean" then
             error("opts.skip_callback must be a boolean", 2)
         end
 
@@ -672,11 +673,12 @@ local function check_opts(self, opts)
         shm_set_tries = self.shm_set_tries
     end
 
-    if not skip_callback then
+    if skip_callback == nil then
         skip_callback = self.skip_callback
     end
 
-    return ttl, neg_ttl, resurrect_ttl, l1_serializer, shm_set_tries, skip_callback
+    return ttl, neg_ttl, resurrect_ttl, l1_serializer,
+    shm_set_tries, skip_callback
 end
 
 
@@ -837,8 +839,8 @@ function _M:get(key, opts, cb, ...)
     end
 
     -- opts validation
-    local ttl, neg_ttl, resurrect_ttl, l1_serializer, shm_set_tries, skip_callback
-        = check_opts(self, opts)
+    local ttl, neg_ttl, resurrect_ttl, l1_serializer,
+    shm_set_tries, skip_callback = check_opts(self, opts)
 
     if skip_callback ~= true and type(cb) ~= "function" then
         error("callback must be a function", 2)
@@ -977,7 +979,8 @@ function _M:get_bulk(bulk, opts)
             end
         end
 
-        if opts.skip_callback and type(opts.skip_callback) ~= "boolean" then
+        if opts.skip_callback ~= nil
+                and type(opts.skip_callback) ~= "boolean" then
             error("opts.skip_callback must be a boolean", 2)
         end
     end
@@ -1030,7 +1033,7 @@ function _M:get_bulk(bulk, opts)
 
             -- override skip_callback from bulk item level
             -- with the one set up al bulk level
-            if opts and opts.skip_callback then
+            if opts and opts.skip_callback ~= nil then
                 skip_callback = opts.skip_callback
             end
 

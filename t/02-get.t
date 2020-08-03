@@ -129,7 +129,7 @@ opts must be a table
 
 
 
-=== TEST 41: get() does not call callback when skip_callback option is set to true in new()
+=== TEST 411: get() does not call callback when skip_callback option is set to true in new()
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -163,14 +163,14 @@ from shm: nil nil
 
 
 
-=== TEST 42: get() does not call callback when skip_callback option is set to true in get()
+=== TEST 412: get() does not call callback when skip_callback option is set to true in get()
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("my_mlcache", "cache_shm", { skip_callback = true })
+            local cache, err = mlcache.new("my_mlcache", "cache_shm", { skip_callback = false })
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
@@ -197,7 +197,7 @@ from shm: nil nil
 
 
 
-=== TEST 43: get() calls callback when skip_callback option is explicitly set to false in new()
+=== TEST 413: get() calls callback when skip_callback option is explicitly set to false in new()
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
