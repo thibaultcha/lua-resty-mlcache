@@ -150,54 +150,20 @@ opts must be a table
             if err then
                 ngx.log(ngx.ERR, err)
             end
+
+            ngx.say("result: ", type(data), " ", data)
         }
     }
 --- request
 GET /t
 --- response_body
-from callback: nil nil
-from lru: nil nil
-from shm: nil nil
+result: nil nil
 --- no_error_log
 [error]
 
 
 
 === TEST 412: get() does not call callback when skip_callback option is set to true in get()
---- http_config eval: $::HttpConfig
---- config
-    location = /t {
-        content_by_lua_block {
-            local mlcache = require "resty.mlcache"
-
-            local cache, err = mlcache.new("my_mlcache", "cache_shm", { skip_callback = true })
-            if not cache then
-                ngx.log(ngx.ERR, err)
-                return
-            end
-
-            local function cb()
-                return 123
-            end
-
-            local data, err = cache:get("key", { skip_callback = true }, cb)
-            if err then
-                ngx.log(ngx.ERR, err)
-            end
-        }
-    }
---- request
-GET /t
---- response_body
-from callback: nil nil
-from lru: nil nil
-from shm: nil nil
---- no_error_log
-[error]
-
-
-
-=== TEST 413: get() calls callback when skip_callback option is explicitly set to false in new()
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -214,18 +180,52 @@ from shm: nil nil
                 return 123
             end
 
-            local data, err = cache:get("key", nil , cb)
+            local data, err = cache:get("key", { skip_callback = true }, cb)
             if err then
                 ngx.log(ngx.ERR, err)
             end
+
+            ngx.say("result: ", type(data), " ", data)
         }
     }
 --- request
 GET /t
 --- response_body
-from callback: number 123
-from lru: number 123
-from shm: number 123
+result: nil nil
+--- no_error_log
+[error]
+
+
+
+=== TEST 413: get() calls callback when skip_callback option is explicitly set to false in get()
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache, err = mlcache.new("my_mlcache", "cache_shm", { skip_callback = true })
+            if not cache then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            local function cb()
+                return 123
+            end
+
+            local data, err = cache:get("key", { skip_callback = false } , cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+            end
+
+            ngx.say("result: ", type(data), " ", data)
+        }
+    }
+--- request
+GET /t
+--- response_body
+result: number 123
 --- no_error_log
 [error]
 
