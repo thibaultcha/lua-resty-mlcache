@@ -1028,7 +1028,8 @@ function _M:get_bulk(bulk, opts)
             local pok, ttl, neg_ttl, resurrect_ttl, l1_serializer,
             shm_set_tries, skip_callback = pcall(check_opts, self, b_opts)
 
-            -- override skip_callback from bulk item level with the one set up al bulk level
+            -- override skip_callback from bulk item level
+            -- with the one set up al bulk level
             if opts and opts.skip_callback then
                 skip_callback = opts.skip_callback
             end
