@@ -170,7 +170,7 @@ from shm: nil nil
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache, err = mlcache.new("my_mlcache", "cache_shm", { skip_callback = false })
+            local cache, err = mlcache.new("my_mlcache", "cache_shm", { skip_callback = true })
             if not cache then
                 ngx.log(ngx.ERR, err)
                 return
