@@ -975,8 +975,10 @@ function _M:get_bulk(bulk, opts)
             if opts.concurrency <= 0 then
                 error("opts.concurrency must be > 0", 2)
             end
+        end
+
         if opts.skip_callback and type(opts.skip_callback) ~= "boolean" then
-                error("opts.skip_callback must be a boolean", 2)
+            error("opts.skip_callback must be a boolean", 2)
         end
     end
 
