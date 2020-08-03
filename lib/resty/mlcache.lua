@@ -1278,8 +1278,8 @@ function _M:set(key, opts, value)
         -- restrict this key to the current namespace, so we isolate this
         -- mlcache instance from potential other instances using the same
         -- shm
-        local ttl, neg_ttl, _, l1_serializer, shm_set_tries, _ = check_opts(self,
-                                                                         opts)
+        local ttl, neg_ttl, _, l1_serializer, shm_set_tries, _ =
+        check_opts(self, opts)
         local namespaced_key = self.name .. key
 
         if self.dict_miss then
