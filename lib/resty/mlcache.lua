@@ -1025,8 +1025,8 @@ function _M:get_bulk(bulk, opts)
             res[res_idx + 2] = 1
 
         else
-            local pok, ttl, neg_ttl, resurrect_ttl, l1_serializer, shm_set_tries, skip_callback
-                = pcall(check_opts, self, b_opts)
+            local pok, ttl, neg_ttl, resurrect_ttl, l1_serializer,
+            shm_set_tries, skip_callback = pcall(check_opts, self, b_opts)
             if not pok then
                 -- strip the stacktrace
                 local err = ttl:match("mlcache%.lua:%d+:%s(.*)")
