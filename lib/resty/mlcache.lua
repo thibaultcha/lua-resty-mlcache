@@ -1027,6 +1027,12 @@ function _M:get_bulk(bulk, opts)
         else
             local pok, ttl, neg_ttl, resurrect_ttl, l1_serializer,
             shm_set_tries, skip_callback = pcall(check_opts, self, b_opts)
+
+            -- override skip_callback from bulk item level with the one set up al bulk level
+            if opts and opts.skip_callback then
+                skip_callback = opts.skip_callback
+            end
+
             if not pok then
                 -- strip the stacktrace
                 local err = ttl:match("mlcache%.lua:%d+:%s(.*)")
@@ -1056,7 +1062,7 @@ function _M:get_bulk(bulk, opts)
                 --res[res_idx + 1] = nil
                 res[res_idx + 2] = is_stale and 4 or 2
 
-            elseif opts.skip_callback ~= true and skip_callback ~= true then
+            elseif skip_callback ~= true then
                 -- not in shm either, we have to prepare a task to run the
                 -- L3 callback
 
