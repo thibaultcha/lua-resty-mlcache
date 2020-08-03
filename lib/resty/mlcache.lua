@@ -187,7 +187,8 @@ function _M.new(name, shm, opts)
         end
 
         if opts.skip_callback ~= nil and
-                type(opts.skip_callback) ~= "boolean" then
+            type(opts.skip_callback) ~= "boolean"
+        then
             error("opts.skip_callback must be a boolean", 2)
         end
 
@@ -678,7 +679,7 @@ local function check_opts(self, opts)
     end
 
     return ttl, neg_ttl, resurrect_ttl, l1_serializer,
-    shm_set_tries, skip_callback
+        shm_set_tries, skip_callback
 end
 
 
@@ -840,7 +841,7 @@ function _M:get(key, opts, cb, ...)
 
     -- opts validation
     local ttl, neg_ttl, resurrect_ttl, l1_serializer,
-    shm_set_tries, skip_callback = check_opts(self, opts)
+        shm_set_tries, skip_callback = check_opts(self, opts)
 
     if skip_callback ~= true and type(cb) ~= "function" then
         error("callback must be a function", 2)
@@ -980,7 +981,8 @@ function _M:get_bulk(bulk, opts)
         end
 
         if opts.skip_callback ~= nil
-                and type(opts.skip_callback) ~= "boolean" then
+                and type(opts.skip_callback) ~= "boolean"
+        then
             error("opts.skip_callback must be a boolean", 2)
         end
     end
@@ -1009,12 +1011,6 @@ function _M:get_bulk(bulk, opts)
                   ceil(i / 4) .. " (got " .. type(b_key) .. ")", 2)
         end
 
-        if b_cb ~= nil and type(b_cb) ~= "function" then
-            error("callback at index " .. i + 2 .. " must be a function " ..
-                  "for operation " .. ceil(i / 4) .. " (got " .. type(b_cb) ..
-                  ")", 2)
-        end
-
         -- worker LRU cache retrieval
 
         local data = self.lru:get(b_key)
@@ -1029,12 +1025,18 @@ function _M:get_bulk(bulk, opts)
 
         else
             local pok, ttl, neg_ttl, resurrect_ttl, l1_serializer,
-            shm_set_tries, skip_callback = pcall(check_opts, self, b_opts)
+                shm_set_tries, skip_callback = pcall(check_opts, self, b_opts)
 
-            -- override skip_callback from bulk item level
-            -- with the one set up al bulk level
+            -- override skip_callback from entry level
+            -- with the one set up at bulk level
             if opts and opts.skip_callback ~= nil then
                 skip_callback = opts.skip_callback
+            end
+
+            if skip_callback ~= true and type(b_cb) ~= "function" then
+                error("callback at index " .. i + 2 .. " must be a function " ..
+                        "for operation " .. ceil(i / 4) .. " (got " ..
+                        type(b_cb) .. ")", 2)
             end
 
             if not pok then
@@ -1279,7 +1281,7 @@ function _M:set(key, opts, value)
         -- mlcache instance from potential other instances using the same
         -- shm
         local ttl, neg_ttl, _, l1_serializer, shm_set_tries, _ =
-        check_opts(self, opts)
+            check_opts(self, opts)
         local namespaced_key = self.name .. key
 
         if self.dict_miss then
