@@ -129,6 +129,108 @@ opts must be a table
 
 
 
+=== TEST 41: get() does not call callback when skip_callback option is set to true in new()
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache, err = mlcache.new("my_mlcache", "cache_shm", { skip_callback = true })
+            if not cache then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            local function cb()
+                return 123
+            end
+
+            local data, err = cache:get("key", nil, cb)
+            if err then
+                ngx.say(err)
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body
+from callback: nil nil
+from lru: nil nil
+from shm: nil nil
+--- no_error_log
+[error]
+
+
+
+=== TEST 42: get() does not call callback when skip_callback option is set to true in get()
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache, err = mlcache.new("my_mlcache", "cache_shm", { skip_callback = true })
+            if not cache then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            local function cb()
+                return 123
+            end
+
+            local data, err = cache:get("key", { skip_callback = true }, cb)
+            if err then
+                ngx.say(err)
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body
+from callback: nil nil
+from lru: nil nil
+from shm: nil nil
+--- no_error_log
+[error]
+
+
+
+=== TEST 43: get() calls callback when skip_callback option is explicitly set to false in new()
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache, err = mlcache.new("my_mlcache", "cache_shm", { skip_callback = false })
+            if not cache then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            local function cb()
+                return 123
+            end
+
+            local data, err = cache:get("key", nil , cb)
+            if err then
+                ngx.say(err)
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body
+from callback: number 123
+from lru: number 123
+from shm: number 123
+--- no_error_log
+[error]
+
+
+
 === TEST 4: get() calls callback in protected mode with stack traceback
 --- http_config eval: $::HttpConfig
 --- config
