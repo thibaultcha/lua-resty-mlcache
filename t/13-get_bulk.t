@@ -286,6 +286,44 @@ GET /t
 
 
 
+=== TEST 71: get_bulk() skip multiple fetch L3 if skip_callback is set to true
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
+
+            local res, err = cache:get_bulk({
+                "key_a", nil, function() return 1 end, nil,
+                "key_b", nil, function() return 2 end, nil,
+                "key_c", nil, function() return 3 end, nil,
+                n = 3,
+            }, { skip_callback = true })
+
+            if not res then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            for i = 1, res.n, 3 do
+                ngx.say(tostring(res[i]), " ",
+                        tostring(res[i + 1]), " ",
+                        tostring(res[i + 2]))
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body
+nil nil nil
+nil nil nil
+nil nil nil
+--- no_error_log
+[error]
+
+
+
 === TEST 8: get_bulk() multiple fetch L2
 --- http_config eval: $::HttpConfig
 --- config
