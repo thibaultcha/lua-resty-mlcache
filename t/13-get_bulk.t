@@ -286,7 +286,7 @@ GET /t
 
 
 
-=== TEST 71: get_bulk() skip multiple fetch L3 if skip_callback is set to true
+=== TEST 8: get_bulk() skip all fetch L3 if skip_callback is set to true at bulk level
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -324,7 +324,7 @@ nil nil nil
 
 
 
-=== TEST 72: get_bulk() skip a fetch L3 if skip_callback is set to true for one of the bulk items
+=== TEST 9: get_bulk() skip a fetch L3 if skip_callback is set to true for its corresponding bulk entry
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -362,7 +362,7 @@ nil nil nil
 
 
 
-=== TEST 73: get_bulk() ignore skip_callback at bulk item level when specified al bulk level
+=== TEST 10: get_bulk() ignore skip_callback at entry level when set to false at bulk level
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -399,7 +399,7 @@ GET /t
 [error]
 
 
-=== TEST 8: get_bulk() multiple fetch L2
+=== TEST 11: get_bulk() multiple fetch L2
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -444,7 +444,7 @@ GET /t
 
 
 
-=== TEST 9: get_bulk() multiple fetch L1
+=== TEST 12: get_bulk() multiple fetch L1
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -485,7 +485,7 @@ GET /t
 
 
 
-=== TEST 10: get_bulk() multiple fetch L1/single fetch L3
+=== TEST 13: get_bulk() multiple fetch L1/single fetch L3
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -525,7 +525,7 @@ GET /t
 
 
 
-=== TEST 11: get_bulk() multiple fetch L1/single fetch L3 (with nils)
+=== TEST 14: get_bulk() multiple fetch L1/single fetch L3 (with nils)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -567,7 +567,7 @@ nil nil 3
 
 
 
-=== TEST 12: get_bulk() mixed fetch L1/L2/L3
+=== TEST 15: get_bulk() mixed fetch L1/L2/L3
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -610,7 +610,7 @@ GET /t
 
 
 
-=== TEST 13: get_bulk() mixed fetch L1/L2/L3 (with nils)
+=== TEST 16: get_bulk() mixed fetch L1/L2/L3 (with nils)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -655,7 +655,7 @@ nil nil 3
 
 
 
-=== TEST 14: get_bulk() returns callback-returned errors
+=== TEST 17: get_bulk() returns callback-returned errors
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -692,7 +692,7 @@ nil some error nil
 
 
 
-=== TEST 15: get_bulk() returns callback runtime errors
+=== TEST 18: get_bulk() returns callback runtime errors
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -731,7 +731,7 @@ stack traceback:
 
 
 
-=== TEST 16: get_bulk() runs L3 callback on expired keys
+=== TEST 19: get_bulk() runs L3 callback on expired keys
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -776,7 +776,7 @@ GET /t
 
 
 
-=== TEST 17: get_bulk() honors ttl and neg_ttl instance attributes
+=== TEST 20: get_bulk() honors ttl and neg_ttl instance attributes
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -823,7 +823,7 @@ key_b: nil (ttl: 0.3)
 
 
 
-=== TEST 18: get_bulk() validates operations ttl and neg_ttl
+=== TEST 21: get_bulk() validates operations ttl and neg_ttl
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -860,7 +860,7 @@ options at index 6 for operation 2 are invalid: opts.neg_ttl must be a number
 
 
 
-=== TEST 19: get_bulk() accepts ttl and neg_ttl for each operation
+=== TEST 22: get_bulk() accepts ttl and neg_ttl for each operation
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -907,7 +907,7 @@ key_b: nil (ttl: 0.8)
 
 
 
-=== TEST 20: get_bulk() honors ttl from callback return values
+=== TEST 23: get_bulk() honors ttl from callback return values
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -953,7 +953,7 @@ key_b: 2 (ttl: 1)
 
 
 
-=== TEST 21: get_bulk() honors resurrect_ttl instance attribute
+=== TEST 24: get_bulk() honors resurrect_ttl instance attribute
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1015,7 +1015,7 @@ key_b: 3 ttl: 0\.(?:1|0)\d+
 
 
 
-=== TEST 22: get_bulk() accepts resurrect_ttl for each operation
+=== TEST 25: get_bulk() accepts resurrect_ttl for each operation
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1077,7 +1077,7 @@ key_b: 3 ttl: 0\.(?:1|0)\d+
 
 
 
-=== TEST 23: get_bulk() honors l1_serializer instance attribute
+=== TEST 26: get_bulk() honors l1_serializer instance attribute
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1116,7 +1116,7 @@ world nil 3
 
 
 
-=== TEST 24: get_bulk() accepts l1_serializer for each operation
+=== TEST 27: get_bulk() accepts l1_serializer for each operation
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1158,7 +1158,7 @@ world nil 3
 
 
 
-=== TEST 25: get_bulk() honors shm_set_tries instance attribute
+=== TEST 28: get_bulk() honors shm_set_tries instance attribute
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1215,7 +1215,7 @@ could not write to lua_shared_dict 'cache_shm' after 1 tries (no memory)
 
 
 
-=== TEST 26: get_bulk() accepts shm_set_tries for each operation
+=== TEST 29: get_bulk() accepts shm_set_tries for each operation
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1272,7 +1272,7 @@ could not write to lua_shared_dict 'cache_shm' after 1 tries (no memory)
 
 
 
-=== TEST 27: get_bulk() operations wait on lock if another thread is fetching the same key
+=== TEST 30: get_bulk() operations wait on lock if another thread is fetching the same key
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1342,7 +1342,7 @@ hello nil 2
 
 
 
-=== TEST 28: get_bulk() operations reports timeout on lock if another thread is fetching the same key
+=== TEST 31: get_bulk() operations reports timeout on lock if another thread is fetching the same key
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1414,7 +1414,7 @@ nil could not acquire callback lock: timeout nil
 
 
 
-=== TEST 29: get_bulk() opts.concurrency: default is 3 (with 3 ops)
+=== TEST 32: get_bulk() opts.concurrency: default is 3 (with 3 ops)
 --- http_config eval: $::HttpConfig
 --- log_level: debug
 --- config
@@ -1450,7 +1450,7 @@ main thread running callbacks 3 to 3
 
 
 
-=== TEST 30: get_bulk() opts.concurrency: default is 3 (with 6 ops)
+=== TEST 33: get_bulk() opts.concurrency: default is 3 (with 6 ops)
 --- http_config eval: $::HttpConfig
 --- log_level: debug
 --- config
@@ -1489,7 +1489,7 @@ main thread running callbacks 5 to 6
 
 
 
-=== TEST 31: get_bulk() opts.concurrency: default is 3 (with 7 ops)
+=== TEST 34: get_bulk() opts.concurrency: default is 3 (with 7 ops)
 --- http_config eval: $::HttpConfig
 --- log_level: debug
 --- config
@@ -1529,7 +1529,7 @@ main thread running callbacks 7 to 7
 
 
 
-=== TEST 32: get_bulk() opts.concurrency: default is 3 (with 1 op)
+=== TEST 35: get_bulk() opts.concurrency: default is 3 (with 1 op)
 --- http_config eval: $::HttpConfig
 --- log_level: debug
 --- config
@@ -1563,7 +1563,7 @@ main thread running callbacks 1 to 1
 
 
 
-=== TEST 33: get_bulk() opts.concurrency: 1 (with 3 ops)
+=== TEST 36: get_bulk() opts.concurrency: 1 (with 3 ops)
 --- http_config eval: $::HttpConfig
 --- log_level: debug
 --- config
@@ -1599,7 +1599,7 @@ main thread running callbacks 1 to 3
 
 
 
-=== TEST 34: get_bulk() opts.concurrency: 1 (with 6 ops)
+=== TEST 37: get_bulk() opts.concurrency: 1 (with 6 ops)
 --- http_config eval: $::HttpConfig
 --- log_level: debug
 --- config
@@ -1638,7 +1638,7 @@ main thread running callbacks 1 to 6
 
 
 
-=== TEST 35: get_bulk() opts.concurrency: 6 (with 3 ops)
+=== TEST 38: get_bulk() opts.concurrency: 6 (with 3 ops)
 --- http_config eval: $::HttpConfig
 --- log_level: debug
 --- config
@@ -1674,7 +1674,7 @@ main thread running callbacks 3 to 3
 
 
 
-=== TEST 36: get_bulk() opts.concurrency: 6 (with 6 ops)
+=== TEST 39: get_bulk() opts.concurrency: 6 (with 6 ops)
 --- http_config eval: $::HttpConfig
 --- log_level: debug
 --- config
@@ -1718,7 +1718,7 @@ main thread running callbacks 6 to 6
 
 
 
-=== TEST 37: get_bulk() opts.concurrency: 6 (with 7 ops)
+=== TEST 40: get_bulk() opts.concurrency: 6 (with 7 ops)
 --- http_config eval: $::HttpConfig
 --- log_level: debug
 --- config
@@ -1759,7 +1759,7 @@ thread 4 running callbacks 7 to 7
 
 
 
-=== TEST 38: get_bulk() opts.concurrency: 6 (with 1 op)
+=== TEST 41: get_bulk() opts.concurrency: 6 (with 1 op)
 --- http_config eval: $::HttpConfig
 --- log_level: debug
 --- config
@@ -1793,7 +1793,7 @@ main thread running callbacks 1 to 1
 
 
 
-=== TEST 39: get_bulk() opts.concurrency: 6 (with 7 ops)
+=== TEST 42: get_bulk() opts.concurrency: 6 (with 7 ops)
 --- http_config eval: $::HttpConfig
 --- log_level: debug
 --- config

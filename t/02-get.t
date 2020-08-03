@@ -129,7 +129,7 @@ opts must be a table
 
 
 
-=== TEST 411: get() does not call callback when skip_callback option is set to true in new()
+=== TEST 4: get() does not call callback when skip_callback option is set to true in new()
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -163,7 +163,7 @@ result: nil nil
 
 
 
-=== TEST 412: get() does not call callback when skip_callback option is set to true in get()
+=== TEST 5: get() does not call callback when skip_callback option is set to true in get()
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -197,7 +197,7 @@ result: nil nil
 
 
 
-=== TEST 413: get() calls callback when skip_callback option is explicitly set to false in get()
+=== TEST 6: get() calls callback when skip_callback option is explicitly set to false in get()
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -231,7 +231,7 @@ result: number 123
 
 
 
-=== TEST 4: get() calls callback in protected mode with stack traceback
+=== TEST 7: get() calls callback in protected mode with stack traceback
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -266,7 +266,7 @@ stack traceback:
 
 
 
-=== TEST 5: get() is resilient to callback runtime errors with non-string arguments
+=== TEST 8: get() is resilient to callback runtime errors with non-string arguments
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -300,7 +300,7 @@ callback threw an error: table: 0x[0-9a-fA-F]+
 
 
 
-=== TEST 6: get() caches a number
+=== TEST 9: get() caches a number
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -361,7 +361,7 @@ from shm: number 123
 
 
 
-=== TEST 7: get() caches a boolean (true)
+=== TEST 10: get() caches a boolean (true)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -422,7 +422,7 @@ from shm: boolean true
 
 
 
-=== TEST 8: get() caches a boolean (false)
+=== TEST 11: get() caches a boolean (false)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -483,7 +483,7 @@ from shm: boolean false
 
 
 
-=== TEST 9: get() caches nil
+=== TEST 12: get() caches nil
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -544,7 +544,7 @@ from shm: nil nil
 
 
 
-=== TEST 10: get() caches nil in 'shm_miss' if specified
+=== TEST 13: get() caches nil in 'shm_miss' if specified
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -625,7 +625,7 @@ value in lru is a sentinel nil value: true
 
 
 
-=== TEST 11: get() caches a string
+=== TEST 14: get() caches a string
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -686,7 +686,7 @@ from shm: string hello world
 
 
 
-=== TEST 12: get() caches a table
+=== TEST 15: get() caches a table
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -751,7 +751,7 @@ from shm: table world bar
 
 
 
-=== TEST 13: get() errors when caching an unsupported type
+=== TEST 16: get() errors when caching an unsupported type
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -784,7 +784,7 @@ qr/\[error\] .*?mlcache\.lua:\d+: cannot cache value of type userdata/
 
 
 
-=== TEST 14: get() calls callback with args
+=== TEST 17: get() calls callback with args
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -819,7 +819,7 @@ GET /t
 
 
 
-=== TEST 15: get() caches hit for 'ttl' from LRU (in ms)
+=== TEST 18: get() caches hit for 'ttl' from LRU (in ms)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -857,7 +857,7 @@ in callback
 
 
 
-=== TEST 16: get() caches miss (nil) for 'neg_ttl' from LRU (in ms)
+=== TEST 19: get() caches miss (nil) for 'neg_ttl' from LRU (in ms)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -901,7 +901,7 @@ in callback
 
 
 
-=== TEST 17: get() caches for 'opts.ttl' from LRU (in ms)
+=== TEST 20: get() caches for 'opts.ttl' from LRU (in ms)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -939,7 +939,7 @@ in callback
 
 
 
-=== TEST 18: get() caches for 'opts.neg_ttl' from LRU (in ms)
+=== TEST 21: get() caches for 'opts.neg_ttl' from LRU (in ms)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -980,7 +980,7 @@ in callback
 
 
 
-=== TEST 19: get() with ttl of 0 means indefinite caching
+=== TEST 22: get() with ttl of 0 means indefinite caching
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1027,7 +1027,7 @@ in shm after exp: 123
 
 
 
-=== TEST 20: get() with neg_ttl of 0 means indefinite caching for nil values
+=== TEST 23: get() with neg_ttl of 0 means indefinite caching for nil values
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1076,7 +1076,7 @@ in shm after exp: nil
 
 
 
-=== TEST 21: get() errors when ttl < 0
+=== TEST 24: get() errors when ttl < 0
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1109,7 +1109,7 @@ opts.ttl must be >= 0
 
 
 
-=== TEST 22: get() errors when neg_ttl < 0
+=== TEST 25: get() errors when neg_ttl < 0
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1142,7 +1142,7 @@ opts.neg_ttl must be >= 0
 
 
 
-=== TEST 23: get() shm -> LRU caches for 'opts.ttl - since' in ms
+=== TEST 26: get() shm -> LRU caches for 'opts.ttl - since' in ms
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1200,7 +1200,7 @@ is stale in LRU: 123
 
 
 
-=== TEST 24: get() shm -> LRU caches non-nil for 'indefinite' if ttl is 0
+=== TEST 27: get() shm -> LRU caches non-nil for 'indefinite' if ttl is 0
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1244,7 +1244,7 @@ is not expired in LRU: 123
 
 
 
-=== TEST 25: get() shm -> LRU caches for 'opts.neg_ttl - since' in ms
+=== TEST 28: get() shm -> LRU caches for 'opts.neg_ttl - since' in ms
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1304,7 +1304,7 @@ is stale in LRU: table: \S+
 
 
 
-=== TEST 26: get() shm -> LRU caches nil for 'indefinite' if neg_ttl is 0
+=== TEST 29: get() shm -> LRU caches nil for 'indefinite' if neg_ttl is 0
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1347,7 +1347,7 @@ is stale in LRU: nil
 
 
 
-=== TEST 27: get() returns hit level
+=== TEST 30: get() returns hit level
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1385,7 +1385,7 @@ hit level from shm: 2
 
 
 
-=== TEST 28: get() returns hit level for nil hits
+=== TEST 31: get() returns hit level for nil hits
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1423,7 +1423,7 @@ hit level from shm: 2
 
 
 
-=== TEST 29: get() returns hit level for boolean false hits
+=== TEST 32: get() returns hit level for boolean false hits
 --- skip_eval: 3: t::Util::skip_openresty('<', '1.11.2.3')
 --- http_config eval: $::HttpConfig
 --- config
@@ -1462,7 +1462,7 @@ hit level from shm: 2
 
 
 
-=== TEST 30: get() JITs when hit coming from LRU
+=== TEST 33: get() JITs when hit coming from LRU
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1492,7 +1492,7 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 
 
 
-=== TEST 31: get() JITs when hit of scalar value coming from shm
+=== TEST 34: get() JITs when hit of scalar value coming from shm
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1556,7 +1556,7 @@ GET /t
 
 
 
-=== TEST 32: get() JITs when hit of table value coming from shm
+=== TEST 35: get() JITs when hit of table value coming from shm
 --- SKIP: blocked until custom table serializer
 --- http_config eval: $::HttpConfig
 --- config
@@ -1590,7 +1590,7 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):18 loop\]/
 
 
 
-=== TEST 33: get() JITs when miss coming from LRU
+=== TEST 36: get() JITs when miss coming from LRU
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1621,7 +1621,7 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 
 
 
-=== TEST 34: get() JITs when miss coming from shm
+=== TEST 37: get() JITs when miss coming from shm
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1654,7 +1654,7 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 
 
 
-=== TEST 35: get() callback can return nil + err (string)
+=== TEST 38: get() callback can return nil + err (string)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1694,7 +1694,7 @@ cb2 return values: foo an error occurred again
 
 
 
-=== TEST 36: get() callback can return nil + err (non-string) safely
+=== TEST 39: get() callback can return nil + err (non-string) safely
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1733,7 +1733,7 @@ cb2 return values: foo table: 0x[[:xdigit:]]+
 
 
 
-=== TEST 37: get() callback can return nil + err (table) and will call __tostring
+=== TEST 40: get() callback can return nil + err (table) and will call __tostring
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1766,7 +1766,7 @@ cb return values: nil hello from __tostring
 
 
 
-=== TEST 38: get() callback's 3th return value can override the ttl
+=== TEST 41: get() callback's 3th return value can override the ttl
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1817,7 +1817,7 @@ in callback 2
 
 
 
-=== TEST 39: get() callback's 3th return value can override the neg_ttl
+=== TEST 42: get() callback's 3th return value can override the neg_ttl
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1868,7 +1868,7 @@ in callback 2
 
 
 
-=== TEST 40: get() ignores invalid callback 3rd return value (not number)
+=== TEST 43: get() ignores invalid callback 3rd return value (not number)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1947,7 +1947,7 @@ in positive callback
 
 
 
-=== TEST 41: get() passes 'resty_lock_opts' for L3 calls
+=== TEST 44: get() passes 'resty_lock_opts' for L3 calls
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -1990,7 +1990,7 @@ was given 'opts.resty_lock_opts': true
 
 
 
-=== TEST 42: get() errors on lock timeout
+=== TEST 45: get() errors on lock timeout
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -2070,7 +2070,7 @@ hit_lvl: 1
 
 
 
-=== TEST 43: get() returns data even if failed to set in shm
+=== TEST 46: get() returns data even if failed to set in shm
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -2122,7 +2122,7 @@ qr/\[warn\] .*? could not write to lua_shared_dict 'cache_shm' after 3 tries \(n
 
 
 
-=== TEST 44: get() errors on invalid opts.shm_set_tries
+=== TEST 47: get() errors on invalid opts.shm_set_tries
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -2162,7 +2162,7 @@ opts.shm_set_tries must be >= 1
 
 
 
-=== TEST 45: get() with default shm_set_tries to LRU evict items when a large value is being cached
+=== TEST 48: get() with default shm_set_tries to LRU evict items when a large value is being cached
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -2233,7 +2233,7 @@ callback was called: 1 times
 
 
 
-=== TEST 46: get() respects instance opts.shm_set_tries to LRU evict items when a large value is being cached
+=== TEST 49: get() respects instance opts.shm_set_tries to LRU evict items when a large value is being cached
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -2306,7 +2306,7 @@ callback was called: 1 times
 
 
 
-=== TEST 47: get() accepts opts.shm_set_tries to LRU evict items when a large value is being cached
+=== TEST 50: get() accepts opts.shm_set_tries to LRU evict items when a large value is being cached
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -2379,7 +2379,7 @@ callback was called: 1 times
 
 
 
-=== TEST 48: get() caches data in L1 LRU even if failed to set in shm
+=== TEST 51: get() caches data in L1 LRU even if failed to set in shm
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -2443,7 +2443,7 @@ is stale: true
 
 
 
-=== TEST 49: get() does not cache value in LRU indefinitely when retrieved from shm on last ms (see GH PR #58)
+=== TEST 52: get() does not cache value in LRU indefinitely when retrieved from shm on last ms (see GH PR #58)
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -2508,7 +2508,7 @@ GET /t
 
 
 
-=== TEST 50: get() bypass cache for negative callback TTL
+=== TEST 53: get() bypass cache for negative callback TTL
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
