@@ -2470,3 +2470,71 @@ in negative callback
 in negative callback
 --- no_error_log
 [error]
+
+=== TEST 51: get() cached only
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache, err = mlcache.new("my_mlcache", "cache_shm")
+            if not cache then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            local function cb()
+                return "hello world"
+            end
+
+            local data, err, hit_lvl = cache:get("key", { cached_only = true })
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("empty: ", type(data), " ", type(err), " hit_lvl: ", hit_lvl)
+
+            -- from callback
+
+            local data, err = cache:get("key", nil, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("from callback: ", type(data), " ", data)
+
+            -- from lru
+
+            local data, err = cache:get("key", { cached_only = true })
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("from lru: ", type(data), " ", data)
+
+            -- from shm
+
+            cache.lru:delete("key")
+
+            local data, err = cache:get("key", { cached_only = true })
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.say("from shm: ", type(data), " ", data)
+        }
+    }
+--- request
+GET /t
+--- response_body
+empty: nil nil hit_lvl: -1
+from callback: string hello world
+from lru: string hello world
+from shm: string hello world
+--- no_error_log
+[error]

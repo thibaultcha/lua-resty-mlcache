@@ -821,7 +821,7 @@ function _M:get(key, opts, cb, ...)
         error("key must be a string", 2)
     end
 
-    if type(cb) ~= "function" then
+    if type(cb) ~= "function" and (not opts or not opts.cached_only) then
         error("callback must be a function", 2)
     end
 
@@ -864,8 +864,11 @@ function _M:get(key, opts, cb, ...)
     end
 
     -- not in shm either
-    -- single worker must execute the callback
+    if opts and opts.cached_only then
+        return nil, nil, -1
+    end
 
+    -- single worker must execute the callback
     return run_callback(self, key, namespaced_key, data, ttl, neg_ttl,
                         went_stale, l1_serializer, resurrect_ttl,
                         shm_set_tries, cb, ...)
