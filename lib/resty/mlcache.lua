@@ -821,8 +821,8 @@ function _M:get(key, opts, cb, ...)
         error("key must be a string", 2)
     end
 
-    if type(cb) ~= "function" then
-        error("callback must be a function", 2)
+    if cb ~= nil and type(cb) ~= "function" then
+        error("callback must be nil or a function", 2)
     end
 
     -- worker LRU cache retrieval
@@ -864,7 +864,13 @@ function _M:get(key, opts, cb, ...)
     end
 
     -- not in shm either
-    -- single worker must execute the callback
+
+    if cb == nil then
+        -- no L3 callback, early exit
+        return nil, nil, -1
+    end
+
+    -- L3 callback, single worker to run it
 
     return run_callback(self, key, namespaced_key, data, ttl, neg_ttl,
                         went_stale, l1_serializer, resurrect_ttl,

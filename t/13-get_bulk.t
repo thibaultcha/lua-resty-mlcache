@@ -129,6 +129,15 @@ key at index 5 must be a string for operation 2 (got boolean)
             local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
 
             local pok, perr = pcall(cache.get_bulk, cache, {
+                "key_b", nil, nil, nil,
+                "key_a", nil, function() return 1 end, nil,
+                n = 2,
+            })
+            if not pok then
+                ngx.say(perr)
+            end
+
+            local pok, perr = pcall(cache.get_bulk, cache, {
                 "key_a", nil, function() return 1 end, nil,
                 "key_b", nil, false, nil,
                 n = 2,
@@ -141,6 +150,7 @@ key at index 5 must be a string for operation 2 (got boolean)
 --- request
 GET /t
 --- response_body
+callback at index 3 must be a function for operation 1 (got nil)
 callback at index 7 must be a function for operation 2 (got boolean)
 --- no_error_log
 [error]

@@ -334,16 +334,16 @@ Lua VM will be created for every request.
 
 get
 ---
-**syntax:** `value, err, hit_level = cache:get(key, opts?, callback, ...)`
+**syntax:** `value, err, hit_level = cache:get(key, opts?, callback?, ...)`
 
 Perform a cache lookup. This is the primary and most efficient method of this
 module. A typical pattern is to *not* call [set()](#set), and let [get()](#get)
 perform all the work.
 
-When it succeeds, it returns `value` and no error. **Because `nil` values from
-the L3 callback are cached to signify misses, `value` can be nil, hence one
-must rely on the second return value `err` to determine if this method
-succeeded or not**.
+When this method succeeds, it returns `value` and no error. **Because `nil`
+values from the L3 callback can be cached (i.e. "negative caching"), `value` can
+be nil albeit already cached. Hence, one must rely on the second return value
+`err` to determine if this method succeeded or not**.
 
 The third return value is a number which is set if no error was encountered.
 It indicated the level at which the value was fetched: `1` for L1, `2` for L2,
@@ -411,8 +411,8 @@ options:
   tables, cdata objects, loading new Lua code, etc...
   **Default:** inherited from the instance.
 
-The third argument `callback` **must** be a function. Its signature and return
-values are documented in the following example:
+The third argument `callback` is optional. If provided, it must be a function
+whose signature and return values are documented in the following example:
 
 ```lua
 -- arg1, arg2, and arg3 are arguments forwarded to the callback from the
@@ -434,11 +434,29 @@ local function callback(arg1, arg2, arg3)
 end
 ```
 
-This function is allowed to throw Lua errors as it runs in protected mode. Such
-errors thrown from the callback will be returned as strings in the second
-return value `err`.
+The provided `callback` function is allowed to throw Lua errors as it runs in
+protected mode. Such errors thrown from the callback will be returned as strings
+in the second return value `err`.
 
-When called, `get()` follows the below logic:
+If `callback` is not provided, `get()` will still lookup the requested key in
+the L1 and L2 caches and return it if found. In the case when no value is found
+in the cache **and** no callback is provided, `get()` will return `nil, nil,
+-1`, where -1 signifies a **cache miss** (no value). This is not to be confused
+with return values such as `nil, nil, 1`, where 1 signifies a **negative cached
+item** found in L1 (cached `nil`).
+
+```lua
+local value, err, hit_lvl = cache:get("key")
+if value == nil then
+    if hit_lvl == -1 then
+        -- miss (no value)
+    end
+
+    -- negative hit (cached `nil`)
+end
+```
+
+When provided a callback, `get()` follows the below logic:
 
 1. query the L1 cache (lua-resty-lrucache instance). This cache lives in the
    Lua VM, and as such, it is the most efficient one to query.
@@ -466,7 +484,9 @@ When called, `get()` follows the below logic:
    are unlocked and read the value from the L2 cache (they do not run the L3
    callback) and return it.
 
-Example:
+When not provided a callback, `get()` will only execute steps 1. and 2.
+
+Here is a complete example usage:
 
 ```lua
 local mlcache = require "mlcache"
@@ -505,8 +525,8 @@ else
 end
 ```
 
-This second example is a modification of the above one, in which we apply
-some transformation to the retrieved `user` record, and cache it via the
+This second example is similar to the one above, but here we apply some
+transformation to the retrieved `user` record before caching it via the
 `l1_serializer` callback:
 
 ```lua
@@ -761,6 +781,11 @@ end
 ngx.say(ttl)   -- 3
 ngx.say(value) -- "some value"
 ```
+
+**Note:** since mlcache `2.5.0`, it is also possible to call [get()](#get)
+without a callback function in order to "query" the cache. Unlike `peek()`, a
+`get()` call with no callback *will* promote the value to the L1 cache, and
+*will not* return its TTL.
 
 [Back to TOC](#table-of-contents)
 
