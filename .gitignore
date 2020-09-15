@@ -2,4 +2,3 @@ t/servroot*
 lua-resty-mlcache-*/
 *.tar.gz
 *.rock
-*.idea
