@@ -821,7 +821,7 @@ function _M:get(key, opts, cb, ...)
         error("key must be a string", 2)
     end
 
-    if type(cb) ~= "function" and (not opts or not opts.cached_only) then
+    if cb and type(cb) ~= "function" then
         error("callback must be a function", 2)
     end
 
@@ -864,7 +864,7 @@ function _M:get(key, opts, cb, ...)
     end
 
     -- not in shm either
-    if opts and opts.cached_only then
+    if not cb then
         return nil, nil, -1
     end
 

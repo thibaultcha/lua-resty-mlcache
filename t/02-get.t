@@ -85,7 +85,7 @@ key must be a string
                 return
             end
 
-            local ok, err = pcall(cache.get, cache, "key")
+            local ok, err = pcall(cache.get, cache, "key", nil, "not a function")
             if not ok then
                 ngx.say(err)
             end
@@ -2471,7 +2471,9 @@ in negative callback
 --- no_error_log
 [error]
 
-=== TEST 51: get() cached only
+
+
+=== TEST 51: get() nil callback
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -2488,7 +2490,7 @@ in negative callback
                 return "hello world"
             end
 
-            local data, err, hit_lvl = cache:get("key", { cached_only = true })
+            local data, err, hit_lvl = cache:get("key")
             if err then
                 ngx.log(ngx.ERR, err)
                 return
@@ -2508,7 +2510,7 @@ in negative callback
 
             -- from lru
 
-            local data, err = cache:get("key", { cached_only = true })
+            local data, err = cache:get("key")
             if err then
                 ngx.log(ngx.ERR, err)
                 return
@@ -2520,7 +2522,7 @@ in negative callback
 
             cache.lru:delete("key")
 
-            local data, err = cache:get("key", { cached_only = true })
+            local data, err = cache:get("key")
             if err then
                 ngx.log(ngx.ERR, err)
                 return
