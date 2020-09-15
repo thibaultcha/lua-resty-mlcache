@@ -821,8 +821,8 @@ function _M:get(key, opts, cb, ...)
         error("key must be a string", 2)
     end
 
-    if cb and type(cb) ~= "function" then
-        error("callback must be a function", 2)
+    if cb ~= nil and type(cb) ~= "function" then
+        error("callback must be nil or a function", 2)
     end
 
     -- worker LRU cache retrieval
@@ -864,7 +864,7 @@ function _M:get(key, opts, cb, ...)
     end
 
     -- not in shm either
-    if not cb then
+    if cb == nil then
         return nil, nil, -1
     end
 

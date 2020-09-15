@@ -89,12 +89,34 @@ key must be a string
             if not ok then
                 ngx.say(err)
             end
+
+            local ok, err = pcall(cache.get, cache, "key", nil, false)
+            if not ok then
+                ngx.say(err)
+            end
+
+            local ok, err = pcall(cache.get, cache, "key", nil, nil)
+            if not ok then
+                ngx.say(err)
+            else
+                ngx.say("OK")
+            end
+
+            local ok, err = pcall(cache.get, cache, "key", nil, function() return "val" end )
+            if not ok then
+                ngx.say(err)
+            else
+                ngx.say("OK")
+            end
         }
     }
 --- request
 GET /t
 --- response_body
-callback must be a function
+callback must be nil or a function
+callback must be nil or a function
+OK
+OK
 --- no_error_log
 [error]
 
