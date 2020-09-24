@@ -893,7 +893,7 @@ request, to make sure they refreshed their L1 cache.
 
 update
 ------
-**syntax:** `ok, err = cache:update()`
+**syntax:** `ok, err = cache:update(timeout?)`
 
 Poll and execute pending cache invalidation events published by other workers.
 
@@ -908,6 +908,12 @@ mlcache itself.
 This method allows a worker to update its L1 cache (by purging values
 considered stale due to an other worker calling `set()`, `delete()`, or
 `purge()`) before processing a request.
+
+This method accepts a `timeout` argument whose unit is seconds and which
+defaults to `0.3` (300ms). The update operation will timeout if it isn't done
+when this threshold in reached. This avoids `update()` from staying on the CPU
+too long in case there are too many events to process. In an eventually
+consistent system, additional events can wait for the next call to be processed.
 
 A typical design pattern is to call `update()` **only once** before each
 request processing. This allows your hot code paths to perform a single shm
