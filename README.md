@@ -168,6 +168,8 @@ Tests matrix results:
 | `1.15.8.1`  | :heavy_check_mark:
 | `1.15.8.2`  | :heavy_check_mark:
 | `1.15.8.3`  | :heavy_check_mark:
+| `1.17.8.1`  | :heavy_check_mark:
+| `1.17.8.2`  | :heavy_check_mark:
 | >           | not tested
 
 [Back to TOC](#table-of-contents)

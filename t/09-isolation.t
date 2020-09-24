@@ -87,7 +87,7 @@ lua-resty-lru instances are the same: false
 
             -- prove LRU survived
 
-            ngx.say(cache_2.lru:get("key"))
+            ngx.say((cache_2.lru:get("key")))
 
             -- GC cache_2 (and the LRU this time, since no more references)
 
@@ -101,7 +101,7 @@ lua-resty-lru instances are the same: false
 
             -- this is a new LRU, it has nothing in it
 
-            ngx.say(cache_2.lru:get("key"))
+            ngx.say((cache_2.lru:get("key")))
         }
     }
 --- request

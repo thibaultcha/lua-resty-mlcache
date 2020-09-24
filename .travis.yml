@@ -21,6 +21,8 @@ env:
     - LUAROCKS=3.3.1
     - TEST_NGINX_RANDOMIZE=1
   matrix:
+    - OPENRESTY=1.17.8.2
+    - OPENRESTY=1.17.8.1
     - OPENRESTY=1.15.8.3
     - OPENRESTY=1.15.8.2
     - OPENRESTY=1.15.8.1
