@@ -57,78 +57,7 @@ no such lua_shared_dict: foo
 
 
 
-=== TEST 2: new() picks up current idx if already set
-This ensures new workers spawned during a master process' lifecycle do not
-attempt to replay all events from index 0.
-https://github.com/thibaultcha/lua-resty-mlcache/issues/87
---- http_config eval
-qq{
-    lua_package_path "$::pwd/lib/?.lua;;";
-    lua_shared_dict  ipc 1m;
-
-    init_by_lua_block {
-        require "resty.core"
-
-        assert(ngx.shared.ipc:set("lua-resty-ipc:index", 42))
-    }
-}
---- config
-    location = /t {
-        content_by_lua_block {
-            local mlcache_ipc = require "resty.mlcache.ipc"
-
-            local ipc, err = mlcache_ipc.new("ipc")
-            if not ipc then
-                error(err)
-            end
-
-            ngx.say(ipc.idx)
-        }
-    }
---- request
-GET /t
---- response_body
-42
---- no_error_log
-[warn]
-[error]
-[crit]
-
-
-
-=== TEST 3: new() checks type of current idx if already set
---- http_config eval
-qq{
-    lua_package_path "$::pwd/lib/?.lua;;";
-    lua_shared_dict  ipc 1m;
-
-    init_by_lua_block {
-        require "resty.core"
-
-        assert(ngx.shared.ipc:set("lua-resty-ipc:index", "42"))
-    }
-}
---- config
-    location = /t {
-        content_by_lua_block {
-            local mlcache_ipc = require "resty.mlcache.ipc"
-
-            local ipc, err = mlcache_ipc.new("ipc")
-            ngx.say(err)
-        }
-    }
---- request
-GET /t
---- response_body
-index is not a number, shm tampered with
---- no_error_log
-[warn]
-[error]
-[crit]
-
-
-
-=== TEST 4: broadcast() sends an event through shm
+=== TEST 2: broadcast() sends an event through shm
 --- http_config eval
 qq{
     $::HttpConfig
@@ -162,7 +91,7 @@ received event from my_channel: hello world
 
 
 
-=== TEST 5: broadcast() runs event callback in protected mode
+=== TEST 3: broadcast() runs event callback in protected mode
 --- http_config eval
 qq{
     $::HttpConfig
@@ -196,7 +125,7 @@ lua entry thread aborted: runtime error
 
 
 
-=== TEST 6: poll() catches invalid timeout arg
+=== TEST 4: poll() catches invalid timeout arg
 --- http_config eval
 qq{
     $::HttpConfig
@@ -225,7 +154,7 @@ timeout must be a number
 
 
 
-=== TEST 7: poll() catches up with all events
+=== TEST 5: poll() catches up with all events
 --- http_config eval
 qq{
     $::HttpConfig
@@ -263,7 +192,62 @@ received event from my_channel: msg 3
 
 
 
-=== TEST 8: poll() does not execute events from self (same pid)
+=== TEST 6: poll() resumes to current idx if events were previously evicted
+This ensures new workers spawned during a master process' lifecycle do not
+attempt to replay all events from index 0.
+https://github.com/thibaultcha/lua-resty-mlcache/issues/87
+https://github.com/thibaultcha/lua-resty-mlcache/issues/93
+--- http_config eval
+qq{
+    lua_package_path "$::pwd/lib/?.lua;;";
+    lua_shared_dict  ipc 32k;
+
+    init_by_lua_block {
+        require "resty.core"
+        local mlcache_ipc = require "resty.mlcache.ipc"
+
+        ipc = assert(mlcache_ipc.new("ipc", true))
+
+        ipc:subscribe("my_channel", function(data)
+            ngx.log(ngx.NOTICE, "my_channel event: ", data)
+        end)
+
+        for i = 1, 32 do
+            -- fill shm, simulating busy workers
+            -- this must trigger eviction for this test to succeed
+            assert(ipc:broadcast("my_channel", string.rep(".", 2^10)))
+        end
+    }
+}
+--- config
+    location = /t {
+        content_by_lua_block {
+            ngx.say("ipc.idx: ", ipc.idx)
+
+            assert(ipc:broadcast("my_channel", "first broadcast"))
+            assert(ipc:broadcast("my_channel", "second broadcast"))
+
+            -- first poll without new() to simulate new worker
+            assert(ipc:poll())
+
+            -- ipc.idx set to shm_idx-1 ("second broadcast")
+            ngx.say("ipc.idx: ", ipc.idx)
+        }
+    }
+--- request
+GET /t
+--- response_body
+ipc.idx: 0
+ipc.idx: 34
+--- error_log
+my_channel event: second broadcast
+--- no_error_log
+my_channel event: first broadcast
+[error]
+
+
+
+=== TEST 7: poll() does not execute events from self (same pid)
 --- http_config eval
 qq{
     $::HttpConfig
@@ -296,7 +280,7 @@ received event from my_channel: hello world
 
 
 
-=== TEST 9: poll() runs all registered callbacks for a channel
+=== TEST 8: poll() runs all registered callbacks for a channel
 --- http_config eval
 qq{
     $::HttpConfig
@@ -340,7 +324,7 @@ callback 3 from my_channel: hello world
 
 
 
-=== TEST 10: poll() exits when no event to poll
+=== TEST 9: poll() exits when no event to poll
 --- http_config eval
 qq{
     $::HttpConfig
@@ -371,7 +355,7 @@ callback from my_channel: hello world
 
 
 
-=== TEST 11: poll() runs all callbacks from all channels
+=== TEST 10: poll() runs all callbacks from all channels
 --- http_config eval
 qq{
     $::HttpConfig
@@ -424,7 +408,7 @@ callback 2 from other_channel: hello ipc 2
 
 
 
-=== TEST 12: poll() catches tampered shm (by third-party users)
+=== TEST 11: poll() catches tampered shm (by third-party users)
 --- http_config eval
 qq{
     $::HttpConfig
@@ -457,7 +441,7 @@ index is not a number, shm tampered with
 
 
 
-=== TEST 13: poll() retries getting an event until timeout
+=== TEST 12: poll() retries getting an event until timeout
 --- http_config eval
 qq{
     $::HttpConfig
@@ -502,7 +486,7 @@ GET /t
 
 
 
-=== TEST 14: poll() reaches custom timeout
+=== TEST 13: poll() reaches custom timeout
 --- http_config eval
 qq{
     $::HttpConfig
@@ -542,7 +526,7 @@ GET /t
 
 
 
-=== TEST 15: poll() logs errors and continue if event has been tampered with
+=== TEST 14: poll() logs errors and continue if event has been tampered with
 --- http_config eval
 qq{
     $::HttpConfig
@@ -580,7 +564,7 @@ GET /t
 
 
 
-=== TEST 16: poll() is safe to be called in contexts that don't support ngx.sleep()
+=== TEST 15: poll() is safe to be called in contexts that don't support ngx.sleep()
 --- http_config eval
 qq{
     $::HttpConfig
@@ -624,7 +608,7 @@ GET /t
 
 
 
-=== TEST 17: poll() guards self.idx from growing beyond the current shm idx
+=== TEST 16: poll() guards self.idx from growing beyond the current shm idx
 --- http_config eval
 qq{
     $::HttpConfig
@@ -670,7 +654,7 @@ callback from my_channel: second broadcast
 
 
 
-=== TEST 18: poll() JITs
+=== TEST 17: poll() JITs
 --- http_config eval
 qq{
     $::HttpConfig
@@ -702,7 +686,7 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):2 loop\]/
 
 
 
-=== TEST 19: broadcast() JITs
+=== TEST 18: broadcast() JITs
 --- http_config eval
 qq{
     $::HttpConfig
