@@ -140,7 +140,6 @@ callback must be nil or a function
 
 
 === TEST 4: get() validates opts
---- SKIP: no options yet
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -153,7 +152,7 @@ callback must be nil or a function
                 return
             end
 
-            local ok, err = pcall(cache.get, cache, "key", function() end, 0)
+            local ok, err = pcall(cache.get, cache, "key", "opts")
             if not ok then
                 ngx.say(err)
             end
@@ -1494,7 +1493,7 @@ GET /t
 
 
 === TEST 33: get() JITs when hit of table value coming from shm
---- SKIP: blocked until custom table serializer
+--- SKIP: blocked until l2_serializer
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
