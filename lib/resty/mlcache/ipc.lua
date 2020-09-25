@@ -134,17 +134,17 @@ function _M:poll(timeout)
         error("timeout must be a number", 2)
     end
 
-    local idx, err = self.dict:get(INDEX_KEY)
+    local shm_idx, err = self.dict:get(INDEX_KEY)
     if err then
         return nil, "failed to get index: " .. err
     end
 
-    if idx == nil then
+    if shm_idx == nil then
         -- no events to poll yet
         return true
     end
 
-    if type(idx) ~= "number" then
+    if type(shm_idx) ~= "number" then
         return nil, "index is not a number, shm tampered with"
     end
 
@@ -152,9 +152,12 @@ function _M:poll(timeout)
         timeout = 0.3
     end
 
+    -- guard: self.idx <= shm_idx
+    self.idx = min(self.idx, shm_idx)
+
     local elapsed = 0
 
-    for _ = self.idx, idx - 1 do
+    for _ = self.idx, shm_idx - 1 do
         -- fetch event from shm with a retry policy in case
         -- we run our :get() in between another worker's
         -- :incr() and :set()

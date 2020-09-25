@@ -624,7 +624,53 @@ GET /t
 
 
 
-=== TEST 17: poll() JITs
+=== TEST 17: poll() guards self.idx from growing beyond the current shm idx
+--- http_config eval
+qq{
+    $::HttpConfig
+
+    init_worker_by_lua_block {
+        local mlcache_ipc = require "resty.mlcache.ipc"
+
+        ipc = assert(mlcache_ipc.new("ipc", true))
+
+        ipc:subscribe("my_channel", function(data)
+            ngx.log(ngx.NOTICE, "callback from my_channel: ", data)
+        end)
+    }
+}
+--- config
+    location = /t {
+        content_by_lua_block {
+            assert(ipc:broadcast("other_channel", ""))
+            assert(ipc:poll())
+            assert(ipc:broadcast("my_channel", "fist broadcast"))
+            assert(ipc:broadcast("other_channel", ""))
+            assert(ipc:broadcast("my_channel", "second broadcast"))
+
+            -- shm idx is 5, let's mess with the instance's idx
+            ipc.idx = 10
+            assert(ipc:poll())
+
+            -- we may have skipped the above events, but we are able to resume polling
+            assert(ipc:broadcast("other_channel", ""))
+            assert(ipc:broadcast("my_channel", "third broadcast"))
+            assert(ipc:poll())
+        }
+    }
+--- request
+GET /t
+--- ignore_response_body
+--- error_log
+callback from my_channel: third broadcast
+--- no_error_log
+callback from my_channel: first broadcast
+callback from my_channel: second broadcast
+[error]
+
+
+
+=== TEST 18: poll() JITs
 --- http_config eval
 qq{
     $::HttpConfig
@@ -656,7 +702,7 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):2 loop\]/
 
 
 
-=== TEST 18: broadcast() JITs
+=== TEST 19: broadcast() JITs
 --- http_config eval
 qq{
     $::HttpConfig
