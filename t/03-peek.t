@@ -151,7 +151,47 @@ ttl: 18
 
 
 
-=== TEST 4: peek() returns remaining ttl if shm_miss is specified
+=== TEST 4: peek() returns a negative ttl when a key expired
+--- http_config eval: $::HttpConfig
+--- config
+    location = /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm"))
+
+            local function cb()
+                return nil
+            end
+
+            local val, err = cache:get("my_key", { neg_ttl = 0 }, cb)
+            if err then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+
+            ngx.sleep(1)
+
+            local ttl = assert(cache:peek("my_key"))
+            ngx.say("ttl: ", math.ceil(ttl))
+
+            ngx.sleep(1)
+
+            local ttl = assert(cache:peek("my_key"))
+            ngx.say("ttl: ", math.ceil(ttl))
+        }
+    }
+--- request
+GET /t
+--- response_body
+ttl: -1
+ttl: -2
+--- no_error_log
+[error]
+
+
+
+=== TEST 5: peek() returns remaining ttl if shm_miss is specified
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -201,7 +241,7 @@ ttl: 18
 
 
 
-=== TEST 5: peek() returns the value if a key has been fetched before
+=== TEST 6: peek() returns the value if a key has been fetched before
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -261,7 +301,7 @@ ttl: \d* nil_val: nil
 
 
 
-=== TEST 6: peek() returns the value if shm_miss is specified
+=== TEST 7: peek() returns the value if shm_miss is specified
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -300,7 +340,7 @@ ttl: \d* nil_val: nil
 
 
 
-=== TEST 7: peek() JITs on hit
+=== TEST 8: peek() JITs on hit
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -332,7 +372,7 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):13 loop\]/
 
 
 
-=== TEST 8: peek() JITs on miss
+=== TEST 9: peek() JITs on miss
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -360,7 +400,7 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):6 loop\]/
 
 
 
-=== TEST 9: peek() returns nil if a value expired
+=== TEST 10: peek() returns nil if a value expired
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -401,7 +441,7 @@ stale: nil
 
 
 
-=== TEST 10: peek() returns nil if a value expired in 'shm_miss'
+=== TEST 11: peek() returns nil if a value expired in 'shm_miss'
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -448,7 +488,7 @@ stale: nil
 
 
 
-=== TEST 11: peek() accepts stale arg and returns stale values
+=== TEST 12: peek() accepts stale arg and returns stale values
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -489,7 +529,7 @@ stale: true
 
 
 
-=== TEST 12: peek() accepts stale arg and returns stale values from 'shm_miss'
+=== TEST 13: peek() accepts stale arg and returns stale values from 'shm_miss'
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -536,7 +576,7 @@ stale: true
 
 
 
-=== TEST 13: peek() does not evict stale items from L2 shm
+=== TEST 14: peek() does not evict stale items from L2 shm
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {
@@ -581,7 +621,7 @@ data: 123
 
 
 
-=== TEST 14: peek() does not evict stale negative data from L2 shm_miss
+=== TEST 15: peek() does not evict stale negative data from L2 shm_miss
 --- http_config eval: $::HttpConfig
 --- config
     location = /t {

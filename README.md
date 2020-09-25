@@ -724,31 +724,35 @@ end
 
 peek
 ----
-**syntax:** `ttl, err, value = cache:peek(key)`
+**syntax:** `ttl, err, value = cache:peek(key, stale?)`
 
 Peek into the L2 (`lua_shared_dict`) cache.
 
-The first and only argument `key` is a string, and it is the key to lookup.
+The first argument `key` is a string which is the key to lookup in the cache.
+
+The second argument `stale` is optional. If `true`, then `peek()` will consider
+stale values as cached values. If not provided, `peek()` will consider stale
+values, as if they were not in the cache
 
 This method returns `nil` and a string describing the error upon failure.
 
-Upon success, but if there is no such value for the queried `key`, it returns
-`nil` as its first argument, and no error. The same applies to cached misses
-looked up with this function.
+If there is no value for the queried `key`, it returns `nil` and no error.
 
-Upon success, and if there is such a value for the queried `key`, it returns a
-number indicating the remaining TTL of the cached value. The third returned
-value in that case will be the cached value itself, for convenience.
+If there is a value for the queried `key`, it returns a number indicating the
+remaining TTL of the cached value (in seconds) and no error. If the value for
+`key` has expired but is still in the L2 cache, returned TTL value will be
+negative. Finally, the third returned value in that case will be the cached
+value itself, for convenience.
 
-This method is useful if you want to know whether a value is cached or not. A
-value stored in the L2 cache is considered cached, regardless of whether or not
-it is also set in the L1 cache of the worker. That is because the L1 cache is
-too volatile (as its size unit is a number of slots), and the L2 cache is
+This method is useful when you want to determine if a value is cached. A value
+stored in the L2 cache is considered cached regardless of whether or not it is
+also set in the L1 cache of the worker. That is because the L1 cache is
+considered volatile (as its size unit is a number of slots), and the L2 cache is
 still several orders of magnitude faster than the L3 callback anyway.
 
 As its only intent is to take a "peek" into the cache to determine its warmth
 for a given value, `peek()` does not count as a query like [get()](#get), and
-does not set the value in the L1 cache.
+does not promote the value to the L1 cache.
 
 Example:
 
