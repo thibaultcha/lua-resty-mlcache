@@ -1,8 +1,8 @@
 package = "lua-resty-mlcache"
-version = "2.4.1-1"
+version = "2.5.0-1"
 source = {
   url = "git://github.com/thibaultcha/lua-resty-mlcache",
-  tag = "2.4.1"
+  tag = "2.5.0"
 }
 description = {
   summary  = "Layered caching library for OpenResty",
