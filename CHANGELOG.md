@@ -1,5 +1,6 @@
 # Table of Contents
 
+- [2.5.0](#2.5.0)
 - [2.4.1](#2.4.1)
 - [2.4.0](#2.4.0)
 - [2.3.0](#2.3.0)
@@ -11,6 +12,32 @@
 - [2.0.0](#2.0.0)
 - [1.0.1](#1.0.1)
 - [1.0.0](#1.0.0)
+
+## [2.5.0]
+
+> Released on: 2020/11/18
+
+#### Added
+
+- `get()` callback functions are now optional. Without a callback, `get()` now
+  still performs on-cpu L1/L2 lookups (no yielding). This allows implementing
+  new cache lookup patterns guaranteed to be on-cpu for a more constant,
+  smoother latency tail end (e.g. values are refreshed in background timers with
+  `set()`).
+  Thanks Hamish Forbes and Corina Purcarea for proposing this feature and
+  participating in its development!
+  [#96](https://github.com/thibaultcha/lua-resty-mlcache/pull/96)
+
+#### Fixed
+
+- Improve `update()` robustness to worker crashes. Now, the library behind
+  `cache:update()` is much more robust to re-spawned workers when initialized in
+  the `init_by_lua` phase.
+  [#97](https://github.com/thibaultcha/lua-resty-mlcache/pull/97)
+- Document the `peek()` method `stale` argument which was not mentioned, as well
+  as the possibility of negative TTL return values for expired items.
+
+[Back to TOC](#table-of-contents)
 
 ## [2.4.1]
 
@@ -215,6 +242,7 @@ Initial release.
 
 [Back to TOC](#table-of-contents)
 
+[2.5.0]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.4.1...2.5.0
 [2.4.1]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.4.0...2.4.1
 [2.4.0]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.3.0...2.4.0
 [2.3.0]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.2.1...2.3.0
