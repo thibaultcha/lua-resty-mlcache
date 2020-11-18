@@ -159,17 +159,11 @@ Tests matrix results:
 | OpenResty   | Compatibility
 |------------:|:--------------------|
 | <           | not tested
-| `1.11.2.2`  | :heavy_check_mark:
-| `1.11.2.3`  | :heavy_check_mark:
-| `1.11.2.4`  | :heavy_check_mark:
-| `1.11.2.5`  | :heavy_check_mark:
-| `1.13.6.1`  | :heavy_check_mark:
-| `1.13.6.2`  | :heavy_check_mark:
-| `1.15.8.1`  | :heavy_check_mark:
-| `1.15.8.2`  | :heavy_check_mark:
-| `1.15.8.3`  | :heavy_check_mark:
-| `1.17.8.1`  | :heavy_check_mark:
-| `1.17.8.2`  | :heavy_check_mark:
+| `1.11.2.x`  | :heavy_check_mark:
+| `1.13.6.x`  | :heavy_check_mark:
+| `1.15.8.x`  | :heavy_check_mark:
+| `1.17.8.x`  | :heavy_check_mark:
+| `1.19.3.x`  | :heavy_check_mark:
 | >           | not tested
 
 [Back to TOC](#table-of-contents)
