@@ -1,4 +1,4 @@
--- vim: st=4 sts=4 sw=4 et:
+-- vim: ts=4 sts=4 sw=4 et:
 
 local cjson      = require "cjson.safe"
 local new_tab    = require "table.new"
