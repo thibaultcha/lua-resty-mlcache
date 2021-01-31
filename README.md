@@ -115,7 +115,7 @@ http {
 
         end
 
-        -- we put our instance in the global table for brivety in
+        -- we put our instance in the global table for brevity in
         -- this example, but prefer an upvalue to one of your modules
         -- as recommended by ngx_lua
         _G.cache = cache
