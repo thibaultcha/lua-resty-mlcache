@@ -821,7 +821,7 @@ function _M:get(key, opts, cb, ...)
         error("key must be a string", 2)
     end
 
-    if cb ~= nil and type(cb) ~= "function" then
+    if cb and type(cb) ~= "function" then
         error("callback must be nil or a function", 2)
     end
 
