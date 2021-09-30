@@ -136,9 +136,9 @@ http {
                 -- this call will try L1 and L2 before running the callback (L3)
                 -- the returned value will then be stored in L2 and L1
                 -- for the next request.
-                local user, err = cache:get("my_key", nil, callback, "John Doe")
+                local user, err = cache:get("my_key", nil, callback, "jdoe")
 
-                ngx.say(user.username) -- "John Doe"
+                ngx.say(user.name) -- "John Doe"
             }
         }
     }
