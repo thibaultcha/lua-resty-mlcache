@@ -18,7 +18,7 @@ cache:
 env:
   global:
     - JOBS=2
-    - LUAROCKS=3.4.0
+    - LUAROCKS=3.8.0
     - TEST_NGINX_RANDOMIZE=1
   matrix:
     - OPENRESTY=1.19.9.1
