@@ -1,6 +1,6 @@
 # lua-resty-mlcache
 
-[![Build Status][badge-travis-image]][badge-travis-url]
+[![CI](https://github.com/thibaultcha/lua-resty-mlcache/actions/workflows/ci.yml/badge.svg)](https://github.com/thibaultcha/lua-resty-mlcache/actions/workflows/ci.yml)
 
 Fast and automated layered caching for OpenResty.
 
@@ -1025,8 +1025,4 @@ Work licensed under the MIT License.
 [lua-resty-lock]: https://github.com/openresty/lua-resty-lock
 [lua-resty-lrucache]: https://github.com/openresty/lua-resty-lrucache
 [lua_shared_dict]: https://github.com/openresty/lua-nginx-module#lua_shared_dict
-
-[badge-travis-url]: https://travis-ci.org/thibaultcha/lua-resty-mlcache
-[badge-travis-image]: https://travis-ci.org/thibaultcha/lua-resty-mlcache.svg?branch=master
-
 [talk]: https://www.slideshare.net/ThibaultCharbonnier/layered-caching-in-openresty-openresty-con-2018
