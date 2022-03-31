@@ -39,7 +39,6 @@ jobs:
         uses: thibaultcha/setup-openresty@main
         with:
           version: ${{ env.OPENRESTY_VER }}
-          opt: --without-http_ssl_module
       - run: prove -r t/
 
   lint:
@@ -55,6 +54,5 @@ jobs:
         uses: thibaultcha/setup-openresty@main
         with:
           version: ${{ matrix.openresty }}
-          opt: --without-http_ssl_module --without-stream
       - run: |
           echo "luarocks check"
