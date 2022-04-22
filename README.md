@@ -237,7 +237,7 @@ holding the desired options for this instance. The possible options are:
   specified, mlcache will not instantiate an LRU. One can use this value to use
   the `resty.lrucache.pureffi` implementation of lua-resty-lrucache if desired.
 - `shm_set_tries`: the number of tries for the lua_shared_dict `set()`
-  operation. When the lua_shared_dict is full, it attempts to free up to 30
+  operation. When the `lua_shared_dict` is full, it attempts to free up to 30
   items from its queue. When the value being set is much larger than the freed
   space, this option allows mlcache to retry the operation (and free more slots)
   until the maximum number of tries is reached or enough memory was freed for
@@ -245,9 +245,9 @@ holding the desired options for this instance. The possible options are:
   **Default**: `3`.
 - `shm_miss`: _optional_ string. The name of a `lua_shared_dict`. When
   specified, misses (callbacks returning `nil`) will be cached in this separate
-  lua_shared_dict. This is useful to ensure that a large number of cache misses
-  (e.g. triggered by malicious clients) does not evict too many cached items
-  (hits) from the lua_shared_dict specified in `shm`.
+  `lua_shared_dict`. This is useful to ensure that a large number of cache
+  misses (e.g. triggered by malicious clients) does not evict too many cached
+  items (hits) from the `lua_shared_dict` specified in `shm`.
 - `shm_locks`: _optional_ string. The name of a `lua_shared_dict`. When
   specified, lua-resty-lock will use this shared dict to store its locks. This
   option can help reducing cache churning: when the L2 cache (shm) is full,
@@ -392,7 +392,7 @@ options:
   indefinitely.
   **Default:** inherited from the instance.
 - `shm_set_tries`: the number of tries for the lua_shared_dict `set()`
-  operation. When the lua_shared_dict is full, it attempts to free up to 30
+  operation. When the `lua_shared_dict` is full, it attempts to free up to 30
   items from its queue. When the value being set is much larger than the freed
   space, this option allows mlcache to retry the operation (and free more slots)
   until the maximum number of tries is reached or enough memory was freed for
