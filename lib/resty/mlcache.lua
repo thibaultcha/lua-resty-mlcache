@@ -1,6 +1,5 @@
 -- vim: ts=4 sts=4 sw=4 et:
 
-local cjson      = require "cjson.safe"
 local new_tab    = require "table.new"
 local lrucache   = require "resty.lrucache"
 local resty_lock = require "resty.lock"
@@ -18,6 +17,14 @@ do
                 -- nop (obj will be subject to GC)
             end,
         }
+    end
+end
+local codec
+do
+    local pok
+    pok, codec = pcall(require, "string.buffer")
+    if not pok then
+        codec = require "cjson.safe"
     end
 end
 
@@ -41,6 +48,10 @@ local shared       = ngx.shared
 local ngx_log      = ngx.log
 local WARN         = ngx.WARN
 local ERR          = ngx.ERR
+
+
+local encode = codec.encode
+local decode = codec.decode
 
 
 local CACHE_MISS_SENTINEL_LRU = {}
@@ -85,12 +96,12 @@ local marshallers = {
     end,
 
     [4] = function(t)      -- table
-        local json, err = cjson.encode(t)
-        if not json then
+        local str, err = encode(t)
+        if not str then
             return nil, "could not encode table value: " .. err
         end
 
-        return json
+        return str
     end,
 }
 
@@ -127,7 +138,7 @@ local unmarshallers = {
     end,
 
     [4] = function(str) -- table
-        local t, err = cjson.decode(str)
+        local t, err = decode(str)
         if not t then
             return nil, "could not decode table value: " .. err
         end
