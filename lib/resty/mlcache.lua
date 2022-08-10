@@ -1,6 +1,5 @@
 -- vim: ts=4 sts=4 sw=4 et:
 
-local cjson      = require "cjson.safe"
 local new_tab    = require "table.new"
 local lrucache   = require "resty.lrucache"
 local resty_lock = require "resty.lock"
@@ -20,6 +19,14 @@ do
         }
     end
 end
+local codec
+do
+    local pok
+    pok, codec = pcall(require, "string.buffer")
+    if not pok then
+        codec = require "cjson"
+    end
+end
 
 
 local now          = ngx.now
@@ -29,11 +36,14 @@ local fmt          = string.format
 local sub          = string.sub
 local find         = string.find
 local type         = type
+local pcall        = pcall
 local xpcall       = xpcall
 local traceback    = debug.traceback
 local error        = error
 local tostring     = tostring
 local tonumber     = tonumber
+local encode       = codec.encode
+local decode       = codec.decode
 local thread_spawn = ngx.thread.spawn
 local thread_wait  = ngx.thread.wait
 local setmetatable = setmetatable
@@ -85,12 +95,12 @@ local marshallers = {
     end,
 
     [4] = function(t)      -- table
-        local json, err = cjson.encode(t)
-        if not json then
-            return nil, "could not encode table value: " .. err
+        local pok, str = pcall(encode, t)
+        if not pok then
+            return nil, "could not encode table value: " .. str
         end
 
-        return json
+        return str
     end,
 }
 
@@ -127,9 +137,9 @@ local unmarshallers = {
     end,
 
     [4] = function(str) -- table
-        local t, err = cjson.decode(str)
-        if not t then
-            return nil, "could not decode table value: " .. err
+        local pok, t = pcall(decode, str)
+        if not pok then
+            return nil, "could not decode table value: " .. t
         end
 
         return t
