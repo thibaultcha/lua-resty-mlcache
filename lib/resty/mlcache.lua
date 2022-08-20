@@ -3,6 +3,7 @@
 local new_tab    = require "table.new"
 local lrucache   = require "resty.lrucache"
 local resty_lock = require "resty.lock"
+local pcall      = pcall
 local tablepool
 do
     local pok
@@ -24,7 +25,7 @@ do
     local pok
     pok, codec = pcall(require, "string.buffer")
     if not pok then
-        codec = require "cjson.safe"
+        codec = require "cjson"
     end
 end
 
@@ -96,9 +97,9 @@ local marshallers = {
     end,
 
     [4] = function(t)      -- table
-        local str, err = encode(t)
-        if not str then
-            return nil, "could not encode table value: " .. err
+        local pok, str = pcall(encode, t)
+        if not pok then
+            return nil, "could not encode table value: " .. str
         end
 
         return str
@@ -138,9 +139,9 @@ local unmarshallers = {
     end,
 
     [4] = function(str) -- table
-        local t, err = decode(str)
-        if not t then
-            return nil, "could not decode table value: " .. err
+        local pok, t = pcall(decode, str)
+        if not pok then
+            return nil, "could not decode table value: " .. t
         end
 
         return t
