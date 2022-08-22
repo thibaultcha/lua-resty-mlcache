@@ -1,5 +1,6 @@
 # Table of Contents
 
+- [2.6.0](#2.6.0)
 - [2.5.0](#2.5.0)
 - [2.4.1](#2.4.1)
 - [2.4.0](#2.4.0)
@@ -12,6 +13,18 @@
 - [2.0.0](#2.0.0)
 - [1.0.1](#1.0.1)
 - [1.0.0](#1.0.0)
+
+## [2.6.0]
+
+> Released on: 2022/08/22
+
+#### Added
+
+- Use the new LuaJIT `string.buffer` API for L2 (shm layer) encoding/decoding
+  when available.
+  [#110](https://github.com/thibaultcha/lua-resty-mlcache/pull/110)
+
+[Back to TOC](#table-of-contents)
 
 ## [2.5.0]
 
@@ -242,6 +255,7 @@ Initial release.
 
 [Back to TOC](#table-of-contents)
 
+[2.6.0]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.5.0...2.6.0
 [2.5.0]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.4.1...2.5.0
 [2.4.1]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.4.0...2.4.1
 [2.4.0]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.3.0...2.4.0
