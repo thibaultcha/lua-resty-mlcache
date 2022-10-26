@@ -1,7 +1,7 @@
 package = "lua-resty-mlcache"
-version = "2.6.0-1"
+version = "2.6.0-2"
 source = {
-  url = "git://github.com/thibaultcha/lua-resty-mlcache",
+  url = "git+https://github.com/thibaultcha/lua-resty-mlcache",
   tag = "2.6.0"
 }
 description = {
