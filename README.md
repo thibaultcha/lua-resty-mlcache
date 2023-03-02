@@ -340,7 +340,7 @@ perform all the work.
 
 _When this method succeeds_, it returns `value`, and `err` is set to `nil`.
 **Because `nil` values from the L3 callback can be cached (i.e. "negative
-caching"), `value` can be nil albeit already cached. Hence, one must note to
+caching"), `value` can be `nil` albeit already cached. Hence, one must note to
 check the second return value `err` to determine if this method succeeded or
 not**.
 
