@@ -338,17 +338,18 @@ Perform a cache lookup. This is the primary and most efficient method of this
 module. A typical pattern is to *not* call [set()](#set), and let [get()](#get)
 perform all the work.
 
-When this method succeeds, it returns `value` and no error. **Because `nil`
-values from the L3 callback can be cached (i.e. "negative caching"), `value` can
-be nil albeit already cached. Hence, one must rely on the second return value
-`err` to determine if this method succeeded or not**.
+_When this method succeeds_, it returns `value`, and `err` is set to `nil`.
+**Because `nil` values from the L3 callback can be cached (i.e. "negative
+caching"), `value` can be nil albeit already cached. Hence, one must note to
+check the second return value `err` to determine if this method succeeded or
+not**.
 
 The third return value is a number which is set if no error was encountered.
-It indicated the level at which the value was fetched: `1` for L1, `2` for L2,
+It indicates the level at which the value was fetched: `1` for L1, `2` for L2,
 and `3` for L3.
 
-If an error is encountered, this method returns `nil` plus a string describing
-the error.
+_If, however, an error is encountered,_ this method returns `nil` in `value`,
+plus a string describing the error in `err`.
 
 The first argument `key` is a string. Each value must be stored under a unique
 key.
@@ -448,9 +449,12 @@ local value, err, hit_lvl = cache:get("key")
 if value == nil then
     if hit_lvl == -1 then
         -- miss (no value)
-    end
+    elseif err == nil then
+        -- negative hit (cached `nil`)
+    else
+	    -- error
+	end
 
-    -- negative hit (cached `nil`)
 end
 ```
 
