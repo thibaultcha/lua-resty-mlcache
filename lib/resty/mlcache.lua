@@ -668,7 +668,12 @@ end
 local function unlock_and_ret(lock, res, err, hit_lvl)
     local ok, lerr = lock:unlock()
     if not ok and lerr ~= "unlocked" then
-        return nil, "could not unlock callback: " .. lerr
+        return nil, "could not unlock callback: " .. lerr ..
+                    " (key: " .. lock.key .. ")"
+    end
+
+    if err then
+        err = err .. " (key: " .. lock.key .. ")"
     end
 
     return res, err, hit_lvl
@@ -679,12 +684,13 @@ local function run_callback(self, key, shm_key, data, ttl, neg_ttl,
     went_stale, l1_serializer, resurrect_ttl, shm_set_tries, cb, ...)
     local lock, err = resty_lock:new(self.shm_locks, self.resty_lock_opts)
     if not lock then
-        return nil, "could not create lock: " .. err
+        return nil, "could not create lock: " .. err .. " (key: " .. key .. ")"
     end
 
     local elapsed, lerr = lock:lock(LOCK_KEY_PREFIX .. shm_key)
     if not elapsed and lerr ~= "timeout" then
-        return nil, "could not acquire callback lock: " .. lerr
+        return nil, "could not acquire callback lock: " .. lerr .. " (key: "
+                    .. key .. ")"
     end
 
     do
@@ -697,7 +703,7 @@ local function run_callback(self, key, shm_key, data, ttl, neg_ttl,
                                                                 shm_key,
                                                                 l1_serializer)
         if err then
-            return unlock_and_ret(lock, nil, err)
+            return unlock_and_ret(lock, nil, err, nil)
         end
 
         if data2 ~= nil and not went_stale2 then
@@ -716,7 +722,8 @@ local function run_callback(self, key, shm_key, data, ttl, neg_ttl,
     -- finished to run the callback
 
     if lerr == "timeout" then
-        local errmsg = "could not acquire callback lock: timeout"
+        local errmsg = "could not acquire callback lock: timeout" ..
+                       " (key: " .. key .. ")"
 
         -- no stale data nor desire to resurrect it
         if not went_stale or not resurrect_ttl then
@@ -741,7 +748,7 @@ local function run_callback(self, key, shm_key, data, ttl, neg_ttl,
     local pok, perr, err, new_ttl = xpcall(cb, traceback, ...)
     if not pok then
         return unlock_and_ret(lock, nil, "callback threw an error: " ..
-                              tostring(perr))
+                              tostring(perr), nil)
     end
 
     if err then
@@ -752,7 +759,7 @@ local function run_callback(self, key, shm_key, data, ttl, neg_ttl,
 
         -- no stale data nor desire to resurrect it
         if not went_stale or not resurrect_ttl then
-            return unlock_and_ret(lock, perr, err)
+            return unlock_and_ret(lock, perr, err, nil)
         end
 
         -- we got 'data' from the shm, even though it is stale
@@ -803,7 +810,7 @@ local function run_callback(self, key, shm_key, data, ttl, neg_ttl,
     data, err = set_shm_set_lru(self, key, shm_key, data, ttl, neg_ttl, nil,
                                 shm_set_tries, l1_serializer)
     if err then
-        return unlock_and_ret(lock, nil, err)
+        return unlock_and_ret(lock, nil, err, nil)
     end
 
     if data == CACHE_MISS_SENTINEL_LRU then
