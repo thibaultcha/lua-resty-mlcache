@@ -583,7 +583,7 @@ GET /t
 --- response_body
 1 nil 3
 2 nil 3
-nil some error nil
+nil some error (key: lua-resty-mlcache:lock:my_mlcachekey_c) nil
 --- no_error_log
 [error]
 
@@ -1305,7 +1305,7 @@ hello 3
 
 t2
 hello nil 3
-nil could not acquire callback lock: timeout nil
+nil could not acquire callback lock: timeout (key: key) nil
 --- no_error_log
 [error]
 

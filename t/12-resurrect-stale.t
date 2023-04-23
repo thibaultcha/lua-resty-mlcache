@@ -930,12 +930,12 @@ sleeping for 0.3s...
 
 -> stale get()
 data: nil
-err: some error
+err: some error (key: lua-resty-mlcache:lock:my_mlcachekey)
 hit_lvl: nil
 
 -> subsequent get()
 data: nil
-err: some error
+err: some error (key: lua-resty-mlcache:lock:my_mlcachekey)
 hit_lvl: nil
 --- no_error_log
 [error]

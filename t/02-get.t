@@ -229,8 +229,8 @@ stack traceback:
 --- request
 GET /t
 --- response_body_like
-callback threw an error: userdata: NULL
-callback threw an error: table: 0x[0-9a-fA-F]+
+callback threw an error: userdata: NULL \(key: lua-resty-mlcache:lock:my_mlcachekey\)
+callback threw an error: table: 0x[0-9a-fA-F]+ \(key: lua-resty-mlcache:lock:my_mlcachekey\)
 --- no_error_log
 [error]
 
@@ -1623,8 +1623,8 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):10 loop\]/
 --- request
 GET /t
 --- response_body
-cb return values: nil an error occurred
-cb2 return values: foo an error occurred again
+cb return values: nil an error occurred (key: lua-resty-mlcache:lock:my_mlcache1)
+cb2 return values: foo an error occurred again (key: lua-resty-mlcache:lock:my_mlcache2)
 --- no_error_log
 [error]
 
@@ -1662,8 +1662,8 @@ cb2 return values: foo an error occurred again
 --- request
 GET /t
 --- response_body_like chomp
-cb return values: nil table: 0x[[:xdigit:]]+
-cb2 return values: foo table: 0x[[:xdigit:]]+
+cb return values: nil table: 0x[[:xdigit:]]+ \(key: lua-resty-mlcache:lock:my_mlcache1\)
+cb2 return values: foo table: 0x[[:xdigit:]]+ \(key: lua-resty-mlcache:lock:my_mlcache2\)
 --- no_error_log
 [error]
 
@@ -1696,7 +1696,7 @@ cb2 return values: foo table: 0x[[:xdigit:]]+
 --- request
 GET /t
 --- response_body
-cb return values: nil hello from __tostring
+cb return values: nil hello from __tostring (key: lua-resty-mlcache:lock:my_mlcache1)
 --- no_error_log
 [error]
 
@@ -1994,7 +1994,7 @@ was given 'opts.resty_lock_opts': true
 GET /t
 --- response_body
 data: nil
-err: could not acquire callback lock: timeout
+err: could not acquire callback lock: timeout (key: my_key)
 hit_lvl: nil
 
 -> subsequent get()

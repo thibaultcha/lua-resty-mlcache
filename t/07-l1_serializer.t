@@ -295,7 +295,7 @@ transform_boolean("false")
 --- request
 GET /t
 --- response_body_like
-l1_serializer threw an error: .*?: cannot transform
+l1_serializer threw an error: .*?: cannot transform \(key: lua-resty-mlcache:lock:my_mlcachekey\)
 --- no_error_log
 [error]
 
@@ -424,8 +424,8 @@ l1_serializer called for L2 negative hit: false
     }
 --- request
 GET /t
---- response_body_like
-l1_serializer returned a nil value
+--- response_body
+l1_serializer returned a nil value (key: lua-resty-mlcache:lock:my_mlcachekey)
 --- no_error_log
 [error]
 
@@ -459,7 +459,7 @@ l1_serializer returned a nil value
 --- request
 GET /t
 --- response_body
-l1_serializer: cannot transform
+l1_serializer: cannot transform (key: lua-resty-mlcache:lock:my_mlcachekey)
 data: nil
 --- no_error_log
 [error]
