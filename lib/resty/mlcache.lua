@@ -686,7 +686,8 @@ end
 
 
 local function run_callback(self, key, shm_key, data, ttl, neg_ttl,
-    went_stale, l1_serializer, resurrect_ttl, shm_set_tries, cb, ...)
+                            went_stale, l1_serializer, resurrect_ttl,
+                            shm_set_tries, replace, cb, ...)
     local lock, err = resty_lock:new(self.shm_locks, self.resty_lock_opts)
     if not lock then
         return nil, "could not create lock: " .. err
@@ -816,6 +817,17 @@ local function run_callback(self, key, shm_key, data, ttl, neg_ttl,
         return unlock_and_ret(lock, nil, err)
     end
 
+    if replace then
+        if not self.broadcast then
+            error("no ipc to propagate invalidation, specify opts.ipc_shm or opts.ipc", 3)
+        end
+
+        local _, broadcast_err = self.broadcast(self.events.invalidation.channel, key)
+        if broadcast_err then
+            ngx_log(WARN, "could not broadcast invalidation (", broadcast_err, ")")
+        end
+    end
+
     if data == CACHE_MISS_SENTINEL_LRU then
         data = nil
     end
@@ -837,13 +849,21 @@ function _M:get(key, opts, cb, ...)
 
     -- worker LRU cache retrieval
 
-    local data = self.lru:get(key)
-    if data == CACHE_MISS_SENTINEL_LRU then
-        return nil, nil, 1
+    local data
+    local replace
+    if cb then
+        replace = opts and opts.replace == true or nil
     end
 
-    if data ~= nil then
-        return data, nil, 1
+    if not replace then
+        data = self.lru:get(key)
+        if data == CACHE_MISS_SENTINEL_LRU then
+            return nil, nil, 1
+        end
+
+        if data ~= nil then
+            return data, nil, 1
+        end
     end
 
     -- not in worker's LRU cache, need shm lookup
@@ -870,10 +890,12 @@ function _M:get(key, opts, cb, ...)
             data = nil
         end
 
-        return data, nil, is_stale and 4 or 2
+        if not replace then
+            return data, nil, is_stale and 4 or 2
+        end
     end
 
-    -- not in shm either
+    -- not in shm either, or forced callback
 
     if cb == nil then
         -- no L3 callback, early exit
@@ -884,7 +906,7 @@ function _M:get(key, opts, cb, ...)
 
     return run_callback(self, key, namespaced_key, data, ttl, neg_ttl,
                         went_stale, l1_serializer, resurrect_ttl,
-                        shm_set_tries, cb, ...)
+                        shm_set_tries, replace, cb, ...)
 end
 
 

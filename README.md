@@ -409,6 +409,12 @@ options:
   having to repeat such transformations on every request, such as creating
   tables, cdata objects, loading new Lua code, etc...
   **Default:** inherited from the instance.
+- `replace`: _optional_ boolean. When specified and set to `true`, `get()` will
+  always attempt to call the `callback` function when specified and replace the
+  value in caches. It will also notify other workers to invalidate their caches.
+  This option can be used when the cached value needs to be changed before its
+  expiry and the other workers be notified about it. For example a periodic or
+  forced rotation of a cached value.
 
 The third argument `callback` is optional. If provided, it must be a function
 whose signature and return values are documented in the following example:
