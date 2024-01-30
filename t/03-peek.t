@@ -69,6 +69,8 @@ ttl: nil
 
 
 === TEST 3: peek() returns the remaining ttl if a key has been fetched before
+--- main_config
+    timer_resolution 10ms;
 --- config
     location /t {
         content_by_lua_block {
@@ -119,6 +121,8 @@ ttl: 18
 
 
 === TEST 4: peek() returns a negative ttl when a key expired
+--- main_config
+    timer_resolution 10ms;
 --- config
     location /t {
         content_by_lua_block {
@@ -157,6 +161,8 @@ ttl: -2
 
 
 === TEST 5: peek() returns remaining ttl if shm_miss is specified
+--- main_config
+    timer_resolution 10ms;
 --- config
     location /t {
         content_by_lua_block {
