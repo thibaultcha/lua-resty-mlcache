@@ -762,7 +762,10 @@ GET /t
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
-            local cache = assert(mlcache.new("my_mlcache", "cache_shm", { ttl = 0.3 }))
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", { ttl = 0.3,
+            l1_serializer = function(s)
+                return "override"
+            end }))
 
             local function cb()
                 ngx.say("in callback")
@@ -770,17 +773,17 @@ GET /t
             end
 
             local data = assert(cache:get("key", nil, cb))
-            assert(data == 123)
+            assert(data == "override")
 
             ngx.sleep(0.2)
 
             data = assert(cache:get("key", nil, cb))
-            assert(data == 123)
+            assert(data == "override")
 
             ngx.sleep(0.2)
 
-            data = assert(cache:get("key", nil, cb))
-            assert(data == 123)
+            local data, err, lvl = assert(cache:get("key", nil, cb))
+            assert(data == "override")
         }
     }
 --- request
