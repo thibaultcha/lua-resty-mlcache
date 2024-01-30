@@ -445,6 +445,10 @@ in the cache **and** no callback is provided, `get()` will return `nil, nil,
 with return values such as `nil, nil, 1`, where 1 signifies a **negative cached
 item** found in L1 (cached `nil`).
 
+Not providing a `callback` function allows implementing cache lookup patterns
+that are guaranteed to be on-cpu for a more constant, smoother latency tail end
+(e.g. with values refreshed in background timers via `set()`).
+
 ```lua
 local value, err, hit_lvl = cache:get("key")
 if value == nil then
