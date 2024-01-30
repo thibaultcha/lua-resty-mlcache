@@ -174,7 +174,7 @@ end
 
 
 local _M     = {
-    _VERSION = "2.6.0",
+    _VERSION = "2.6.1",
     _AUTHOR  = "Thibault Charbonnier",
     _LICENSE = "MIT",
     _URL     = "https://github.com/thibaultcha/lua-resty-mlcache",
