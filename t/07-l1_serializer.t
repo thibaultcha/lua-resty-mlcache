@@ -1,49 +1,21 @@
 # vim:set ts=4 sts=4 sw=4 et ft=:
 
-use Test::Nginx::Socket::Lua;
-use Cwd qw(cwd);
+use strict;
+use lib '.';
+use t::TestMLCache;
 
 workers(2);
-
 #repeat_each(2);
 
-plan tests => repeat_each() * (blocks() * 3) + 1;
-
-my $pwd = cwd();
-
-our $HttpConfig = qq{
-    lua_package_path "$pwd/lib/?.lua;;";
-    lua_shared_dict  cache_shm 1m;
-    lua_shared_dict  ipc_shm 1m;
-
-    init_by_lua_block {
-        -- local verbose = true
-        local verbose = false
-        local outfile = "$Test::Nginx::Util::ErrLogFile"
-        -- local outfile = "/tmp/v.log"
-        if verbose then
-            local dump = require "jit.dump"
-            dump.on(nil, outfile)
-        else
-            local v = require "jit.v"
-            v.on(outfile)
-        end
-
-        require "resty.core"
-        -- jit.opt.start("hotloop=1")
-        -- jit.opt.start("loopunroll=1000000")
-        -- jit.off()
-    }
-};
+plan tests => repeat_each() * blocks() * 3;
 
 run_tests();
 
 __DATA__
 
 === TEST 1: l1_serializer is validated by the constructor
---- http_config eval: $::HttpConfig
 --- config
-    location = /t {
+    location /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
@@ -55,8 +27,6 @@ __DATA__
             end
         }
     }
---- request
-GET /t
 --- response_body
 opts.l1_serializer must be a function
 --- no_error_log
@@ -65,9 +35,8 @@ opts.l1_serializer must be a function
 
 
 === TEST 2: l1_serializer is called on L1+L2 cache misses
---- http_config eval: $::HttpConfig
 --- config
-    location = /t {
+    location /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
@@ -90,8 +59,6 @@ opts.l1_serializer must be a function
             ngx.say(data)
         }
     }
---- request
-GET /t
 --- response_body
 transform("foo")
 --- no_error_log
@@ -100,9 +67,8 @@ transform("foo")
 
 
 === TEST 3: get() JITs when hit of scalar value coming from shm with l1_serializer
---- http_config eval: $::HttpConfig
 --- config
-    location = /t {
+    location /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
@@ -128,10 +94,7 @@ transform("foo")
             end
         }
     }
---- request
-GET /t
---- response_body
-
+--- ignore_response_body
 --- error_log eval
 qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):18 loop\]/
 --- no_error_log
@@ -140,9 +103,8 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):18 loop\]/
 
 
 === TEST 4: l1_serializer is not called on L1 hits
---- http_config eval: $::HttpConfig
 --- config
-    location = /t {
+    location /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
@@ -171,8 +133,6 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):18 loop\]/
             ngx.say("calls: ", calls)
         }
     }
---- request
-GET /t
 --- response_body
 transform("foo")
 transform("foo")
@@ -184,9 +144,8 @@ calls: 1
 
 
 === TEST 5: l1_serializer is called on each L2 hit
---- http_config eval: $::HttpConfig
 --- config
-    location = /t {
+    location /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
@@ -216,8 +175,6 @@ calls: 1
             ngx.say("calls: ", calls)
         }
     }
---- request
-GET /t
 --- response_body
 transform("foo")
 transform("foo")
@@ -229,9 +186,8 @@ calls: 3
 
 
 === TEST 6: l1_serializer is called on boolean false hits
---- http_config eval: $::HttpConfig
 --- config
-    location = /t {
+    location /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
@@ -258,8 +214,6 @@ calls: 3
             ngx.say(data)
         }
     }
---- request
-GET /t
 --- response_body
 transform_boolean("false")
 --- no_error_log
@@ -268,9 +222,8 @@ transform_boolean("false")
 
 
 === TEST 7: l1_serializer is called on lock timeout
---- http_config eval: $::HttpConfig
 --- config
-    location = /t {
+    location /t {
         content_by_lua_block {
             -- insert 2 dummy values to ensure that lock acquisition (which
             -- uses shm:set) will _not_ evict out stale cached value
@@ -341,8 +294,6 @@ transform_boolean("false")
             ngx.say("hit_lvl: ", hit_lvl) -- should be 1 since LRU instances are shared by mlcache namespace, and t1 finished
         }
     }
---- request
-GET /t
 --- response_body
 data: from cache_2
 err: nil
@@ -358,9 +309,8 @@ qr/\[warn\] .*? could not acquire callback lock: timeout/
 
 
 === TEST 8: l1_serializer is called when value has < 1ms remaining_ttl
---- http_config eval: $::HttpConfig
 --- config
-    location = /t {
+    location /t {
         content_by_lua_block {
             local forced_now = ngx.now()
             ngx.now = function()
@@ -414,8 +364,6 @@ qr/\[warn\] .*? could not acquire callback lock: timeout/
             ngx.say("+0.201s hit_lvl: ", hit_lvl)
         }
     }
---- request
-GET /t
 --- response_body
 +0.200s hit_lvl: 2
 +0.200s hit_lvl: 2
@@ -426,9 +374,8 @@ GET /t
 
 
 === TEST 9: l1_serializer is called in protected mode (L2 miss)
---- http_config eval: $::HttpConfig
 --- config
-    location = /t {
+    location /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
@@ -450,8 +397,6 @@ GET /t
             ngx.say(data)
         }
     }
---- request
-GET /t
 --- response_body_like
 l1_serializer threw an error: .*?: cannot transform
 --- no_error_log
@@ -460,9 +405,8 @@ l1_serializer threw an error: .*?: cannot transform
 
 
 === TEST 10: l1_serializer is called in protected mode (L2 hit)
---- http_config eval: $::HttpConfig
 --- config
-    location = /t {
+    location /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
@@ -490,8 +434,6 @@ l1_serializer threw an error: .*?: cannot transform
             ngx.say(data)
         }
     }
---- request
-GET /t
 --- response_body_like
 l1_serializer threw an error: .*?: cannot transform
 --- no_error_log
@@ -500,9 +442,8 @@ l1_serializer threw an error: .*?: cannot transform
 
 
 === TEST 11: l1_serializer is not called for L2+L3 misses (no record)
---- http_config eval: $::HttpConfig
 --- config
-    location = /t {
+    location /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
@@ -548,8 +489,6 @@ l1_serializer threw an error: .*?: cannot transform
             ngx.say("l1_serializer called for L2 negative hit: ", called)
         }
     }
---- request
-GET /t
 --- response_body
 l1_serializer called for L3 miss: false
 l1_serializer called for L2 negative hit: false
@@ -559,9 +498,8 @@ l1_serializer called for L2 negative hit: false
 
 
 === TEST 12: l1_serializer is not supposed to return a nil value
---- http_config eval: $::HttpConfig
 --- config
-    location = /t {
+    location /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
@@ -580,8 +518,6 @@ l1_serializer called for L2 negative hit: false
             ngx.say(err)
         }
     }
---- request
-GET /t
 --- response_body_like
 l1_serializer returned a nil value
 --- no_error_log
@@ -590,9 +526,8 @@ l1_serializer returned a nil value
 
 
 === TEST 13: l1_serializer can return nil + error
---- http_config eval: $::HttpConfig
 --- config
-    location = /t {
+    location /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
@@ -614,8 +549,6 @@ l1_serializer returned a nil value
             ngx.say("data: ", data)
         }
     }
---- request
-GET /t
 --- response_body
 l1_serializer: cannot transform
 data: nil
@@ -625,9 +558,8 @@ data: nil
 
 
 === TEST 14: l1_serializer can be given as a get() argument
---- http_config eval: $::HttpConfig
 --- config
-    location = /t {
+    location /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
@@ -650,8 +582,6 @@ data: nil
             ngx.say(data)
         }
     }
---- request
-GET /t
 --- response_body
 transform("foo")
 --- no_error_log
@@ -660,9 +590,8 @@ transform("foo")
 
 
 === TEST 15: l1_serializer as get() argument has precedence over the constructor one
---- http_config eval: $::HttpConfig
 --- config
-    location = /t {
+    location /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
@@ -698,8 +627,6 @@ transform("foo")
             ngx.say(data)
         }
     }
---- request
-GET /t
 --- response_body
 get_argument("foo")
 constructor("bar")
@@ -709,9 +636,8 @@ constructor("bar")
 
 
 === TEST 16: get() validates l1_serializer is a function
---- http_config eval: $::HttpConfig
 --- config
-    location = /t {
+    location /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
@@ -729,8 +655,6 @@ constructor("bar")
             end
         }
     }
---- request
-GET /t
 --- response_body
 opts.l1_serializer must be a function
 --- no_error_log
@@ -739,9 +663,8 @@ opts.l1_serializer must be a function
 
 
 === TEST 17: set() calls l1_serializer
---- http_config eval: $::HttpConfig
 --- config
-    location = /t {
+    location /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
@@ -771,8 +694,6 @@ opts.l1_serializer must be a function
             ngx.say(value)
         }
     }
---- request
-GET /t
 --- response_body
 transform("value")
 --- no_error_log
@@ -781,9 +702,8 @@ transform("value")
 
 
 === TEST 18: set() calls l1_serializer for boolean false values
---- http_config eval: $::HttpConfig
 --- config
-    location = /t {
+    location /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
@@ -813,8 +733,6 @@ transform("value")
             ngx.say(value)
         }
     }
---- request
-GET /t
 --- response_body
 transform_boolean("false")
 --- no_error_log
@@ -823,9 +741,8 @@ transform_boolean("false")
 
 
 === TEST 19: l1_serializer as set() argument has precedence over the constructor one
---- http_config eval: $::HttpConfig
 --- config
-    location = /t {
+    location /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
@@ -859,8 +776,6 @@ transform_boolean("false")
             ngx.say(value)
         }
     }
---- request
-GET /t
 --- response_body
 set_argument("value")
 --- no_error_log
@@ -869,9 +784,8 @@ set_argument("value")
 
 
 === TEST 20: set() validates l1_serializer is a function
---- http_config eval: $::HttpConfig
 --- config
-    location = /t {
+    location /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
@@ -891,8 +805,6 @@ set_argument("value")
             end
         }
     }
---- request
-GET /t
 --- response_body
 opts.l1_serializer must be a function
 --- no_error_log
