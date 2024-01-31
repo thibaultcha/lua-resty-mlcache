@@ -701,9 +701,6 @@ qr/\[error\] .*?mlcache\.lua:\d+: cannot cache value of type userdata/
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
                 ttl = 0.3,
-                l1_serializer = function(s)
-                    return "override"
-                end
             }))
 
             local function cb()
@@ -712,17 +709,17 @@ qr/\[error\] .*?mlcache\.lua:\d+: cannot cache value of type userdata/
             end
 
             local data = assert(cache:get("key", nil, cb))
-            assert(data == "override")
+            assert(data == 123)
 
             ngx.sleep(0.2)
 
             data = assert(cache:get("key", nil, cb))
-            assert(data == "override")
+            assert(data == 123)
 
             ngx.sleep(0.2)
 
             local data, err, lvl = assert(cache:get("key", nil, cb))
-            assert(data == "override")
+            assert(data == 123)
         }
     }
 --- response_body
