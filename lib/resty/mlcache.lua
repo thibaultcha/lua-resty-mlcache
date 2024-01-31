@@ -1262,7 +1262,16 @@ function _M:peek(key, stale)
                         "retrieval: " .. err
         end
 
-        local remaining_ttl = ttl - (now() - at)
+        local remaining_ttl = 0
+
+        if ttl > 0 then
+            remaining_ttl = ttl - (now() - at)
+
+            if remaining_ttl == 0 then
+                -- guarantee a non-zero remaining_ttl if ttl is set
+                remaining_ttl = 0.001
+            end
+        end
 
         return remaining_ttl, nil, value, went_stale
     end
