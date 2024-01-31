@@ -410,6 +410,9 @@ options:
   having to repeat such transformations on every request, such as creating
   tables, cdata objects, loading new Lua code, etc...
   **Default:** inherited from the instance.
+- `resty_lock_opts`: _optional_ table. If specified, override the instance
+  `resty_lock_opts` for the current `get()` lookup.
+  **Default:** inherited from the instance.
 
 The third argument `callback` is optional. If provided, it must be a function
 whose signature and return values are documented in the following example:
