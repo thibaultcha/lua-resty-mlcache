@@ -601,3 +601,54 @@ qr/\[TRACE\s+\d+ content_by_lua\(nginx\.conf:\d+\):2 loop\]/
 [warn]
 [error]
 [crit]
+
+
+
+=== TEST 19: poll() steps over a run of lost events in a single call
+Events whose index was consumed by broadcast()'s incr() but never stored, either
+because the shm evicted them or because set() returned "no memory", leave a hole
+that can never be filled. Skipping one index per call lets a busy writer outpace
+the reader forever.
+https://github.com/thibaultcha/lua-resty-mlcache/issues/87
+--- http_config
+    init_worker_by_lua_block {
+        local mlcache_ipc = require "resty.mlcache.ipc"
+
+        ipc = assert(mlcache_ipc.new("ipc_shm", true))
+
+        ipc:subscribe("my_channel", function(data)
+            ngx.log(ngx.NOTICE, "my_channel event: ", data)
+        end)
+    }
+--- config
+    location /t {
+        content_by_lua_block {
+            for i = 1, 5 do
+                assert(ipc:broadcast("my_channel", "lost " .. i))
+            end
+
+            assert(ipc:broadcast("my_channel", "survivor"))
+
+            -- events 1 through 5 are gone, 6 is still in the shm
+            for i = 1, 5 do
+                ngx.shared.ipc_shm:delete(i)
+            end
+            ngx.shared.ipc_shm:flush_expired()
+
+            local ok, err = ipc:poll()
+            ngx.say("poll: ", ok, " ", err)
+            ngx.say("ipc.idx: ", ipc.idx)
+
+            assert(ipc:poll())
+            ngx.say("ipc.idx: ", ipc.idx)
+        }
+    }
+--- response_body
+poll: nil timeout
+ipc.idx: 5
+ipc.idx: 6
+--- error_log
+my_channel event: survivor
+--- no_error_log
+[crit]
+[alert]
