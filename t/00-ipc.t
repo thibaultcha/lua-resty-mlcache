@@ -652,3 +652,219 @@ my_channel event: survivor
 --- no_error_log
 [crit]
 [alert]
+
+
+
+=== TEST 20: poll() steps over a run of lost events longer than the scan cap
+A run of holes longer than MAX_HOLE_SCAN (1000) cannot be skipped in one call:
+the scan runs out of budget and poll() resumes where it stopped, so a run of
+2,500 lost events costs 3 polls (2 scans hitting the cap + 1 finding the
+surviving event at index 2,501) instead of 2,500 timeouts.
+https://github.com/thibaultcha/lua-resty-mlcache/issues/130
+--- http_config
+    init_worker_by_lua_block {
+        local mlcache_ipc = require "resty.mlcache.ipc"
+
+        ipc = assert(mlcache_ipc.new("ipc_shm", true))
+
+        ipc:subscribe("my_channel", function(data)
+            ngx.log(ngx.NOTICE, "my_channel event: ", data)
+        end)
+    }
+--- config
+    location /t {
+        content_by_lua_block {
+            for i = 1, 2500 do
+                assert(ipc:broadcast("my_channel", "lost " .. i))
+            end
+
+            assert(ipc:broadcast("my_channel", "survivor"))
+
+            -- events 1 through 2500 are gone, 2501 is still in the shm
+            for i = 1, 2500 do
+                ngx.shared.ipc_shm:delete(i)
+            end
+            ngx.shared.ipc_shm:flush_expired()
+
+            -- first poll: burns the timeout at index 1, then scans 1000
+            -- holes and resumes at index 1001
+            local ok, err = ipc:poll()
+            ngx.say("poll 1: ", ok, " ", err)
+            ngx.say("ipc.idx: ", ipc.idx)
+
+            -- second poll: same, resumes at index 2002
+            local ok, err = ipc:poll()
+            ngx.say("poll 2: ", ok, " ", err)
+            ngx.say("ipc.idx: ", ipc.idx)
+
+            -- third poll: the scan finds the survivor at index 2501 and
+            -- resumes at index 2500
+            local ok, err = ipc:poll()
+            ngx.say("poll 3: ", ok, " ", err)
+            ngx.say("ipc.idx: ", ipc.idx)
+
+            assert(ipc:poll())
+            ngx.say("ipc.idx: ", ipc.idx)
+        }
+    }
+--- response_body
+poll 1: nil timeout
+ipc.idx: 1001
+poll 2: nil timeout
+ipc.idx: 2002
+poll 3: nil timeout
+ipc.idx: 2500
+ipc.idx: 2501
+--- error_log
+my_channel event: survivor
+--- no_error_log
+[crit]
+[alert]
+
+
+
+=== TEST 21: poll() resumes at the current shm idx when no event survives
+When the scan runs past the last index without finding a surviving event,
+poll() must resume at the current shm idx so the next poll() does not re-scan
+the drained run.
+https://github.com/thibaultcha/lua-resty-mlcache/issues/130
+--- http_config
+    init_worker_by_lua_block {
+        local mlcache_ipc = require "resty.mlcache.ipc"
+
+        ipc = assert(mlcache_ipc.new("ipc_shm", true))
+
+        ipc:subscribe("my_channel", function(data)
+            ngx.log(ngx.NOTICE, "my_channel event: ", data)
+        end)
+    }
+--- config
+    location /t {
+        content_by_lua_block {
+            for i = 1, 5 do
+                assert(ipc:broadcast("my_channel", "lost " .. i))
+            end
+
+            -- events 1 through 5 are gone, nothing survives
+            for i = 1, 5 do
+                ngx.shared.ipc_shm:delete(i)
+            end
+            ngx.shared.ipc_shm:flush_expired()
+
+            local ok, err = ipc:poll()
+            ngx.say("poll: ", ok, " ", err)
+            ngx.say("ipc.idx: ", ipc.idx)
+
+            -- the next poll must find nothing new to poll and return
+            -- immediately
+            assert(ipc:poll())
+            ngx.say("ipc.idx: ", ipc.idx)
+
+            -- and polling resumes normally for new events
+            assert(ipc:broadcast("my_channel", "hello"))
+            assert(ipc:poll())
+            ngx.say("ipc.idx: ", ipc.idx)
+        }
+    }
+--- response_body
+poll: nil timeout
+ipc.idx: 5
+ipc.idx: 5
+ipc.idx: 6
+--- error_log
+my_channel event: hello
+--- no_error_log
+[crit]
+[alert]
+
+
+=== TEST 22: poll() steps over the hole left by a broadcast() set() failure
+A set() that returns "no memory" leaves the same unfillable hole as an evicted
+event: broadcast() consumed the index at incr() and returns before setting any
+flag. The failing event is deliberately larger than the whole zone: no amount
+of LRU eviction can free enough of it, so set() deterministically fails with
+"no memory". The subsequent poll() must step over that hole and deliver the
+surviving events around it.
+https://github.com/thibaultcha/lua-resty-mlcache/issues/130
+https://github.com/thibaultcha/lua-resty-mlcache/issues/129
+--- http_config
+    lua_shared_dict  ipc_shm 64k;
+
+    init_by_lua_block {
+        require "resty.core"
+
+        local dict = ngx.shared.ipc_shm
+
+        -- fill the shm with filler keys of the same size class as the events
+        -- below (the filler keys are 9 bytes and the events' marshalled
+        -- values ~69 bytes, so both nodes land in the 128-byte slab class):
+        -- set() evicts LRU fillers as needed and never fails, so the zone
+        -- ends up full of a single class. The loop is bounded because a
+        -- same-class set() can never fail
+        local i = 0
+        while i < 2000 do
+            local ok = dict:set("filler" .. i, string.rep(".", 56))
+            if not ok then
+                break
+            end
+            i = i + 1
+        end
+
+        -- free a few filler-class slots for the events below, so that the
+        -- events themselves are stored without any eviction (and thus
+        -- without setting the forcible flag)
+        for j = 0, 19 do
+            dict:delete("filler" .. j)
+        end
+    }
+
+    init_worker_by_lua_block {
+        local mlcache_ipc = require "resty.mlcache.ipc"
+
+        ipc = assert(mlcache_ipc.new("ipc_shm", true))
+
+        ipc:subscribe("my_channel", function(data)
+            ngx.log(ngx.NOTICE, "my_channel event: ", data)
+        end)
+    }
+--- config
+    location /t {
+        content_by_lua_block {
+            -- small events consume indexes 1 through 8; poll them first so
+            -- the subsequent poll() below runs with a warm (non-zero) idx
+            for i = 1, 8 do
+                assert(ipc:broadcast("my_channel", "event " .. i .. ":"
+                    .. string.rep(".", 40)))
+            end
+            assert(ipc:poll())
+
+            -- a 70KB event needs more whole slab pages than the 64k zone can
+            -- ever hold, so set() must fail with "no memory" no matter how
+            -- many items it evicts, consuming index 9 without storing
+            -- anything
+            local ok, err = ipc:broadcast("my_channel", "lost:"
+                .. string.rep(".", 70 * 1024))
+            ngx.say("broadcast: ", ok, " ", err)
+
+            -- index 9 is a hole; the two events below are small again
+            assert(ipc:broadcast("my_channel", "survivor 1"))
+            assert(ipc:broadcast("my_channel", "survivor 2"))
+
+            local ok, err = ipc:poll()
+            ngx.say("poll: ", ok, " ", err)
+            ngx.say("ipc.idx: ", ipc.idx)
+
+            assert(ipc:poll())
+            ngx.say("ipc.idx: ", ipc.idx)
+        }
+    }
+--- response_body
+broadcast: nil failed to insert event in shm: no memory
+poll: nil timeout
+ipc.idx: 9
+ipc.idx: 11
+--- error_log
+my_channel event: survivor 1
+my_channel event: survivor 2
+--- no_error_log
+[crit]
