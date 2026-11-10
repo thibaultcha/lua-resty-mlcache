@@ -52,7 +52,29 @@ lua-resty-lru instances are the same: false
 
 
 
-=== TEST 3: garbage-collected instances also GC their lru instance
+=== TEST 3: instances with the same name but different shms have different lua-resty-lru instances
+Instances of the same name using different shms must not share their L1
+cache: each LRU must hold the values of its own shm.
+--- config
+    location /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache_1 = assert(mlcache.new("my_mlcache", "cache_shm"))
+            local cache_2 = assert(mlcache.new("my_mlcache", "cache_shm_miss"))
+
+            ngx.say("lua-resty-lru instances are the same: ",
+                    cache_1.lru == cache_2.lru)
+        }
+    }
+--- response_body
+lua-resty-lru instances are the same: false
+--- no_error_log
+[error]
+
+
+
+=== TEST 4: garbage-collected instances also GC their lru instance
 --- config
     location /t {
         content_by_lua_block {
@@ -98,7 +120,7 @@ nil
 
 
 
-=== TEST 4: multiple instances with different names get() of the same key are isolated
+=== TEST 5: multiple instances with different names get() of the same key are isolated
 --- config
     location /t {
         content_by_lua_block {
@@ -146,7 +168,7 @@ cache_2 shm has: value B
 
 
 
-=== TEST 5: namespaced shm keys cannot collide across instances
+=== TEST 6: namespaced shm keys cannot collide across instances
 The shm key prefix is delimited by a control character, so an instance
 named "ab" holding key "c" cannot collide with an instance named "a"
 holding key "bc" (concatenation alone would yield "abc" for both).
@@ -177,7 +199,7 @@ a/bc: from a
 
 
 
-=== TEST 6: multiple instances with different names delete() of the same key are isolated
+=== TEST 7: multiple instances with different names delete() of the same key are isolated
 --- config
     location /t {
         content_by_lua_block {
@@ -238,7 +260,7 @@ cache_2 lru has: value B
 
 
 
-=== TEST 7: multiple instances with different names peek() of the same key are isolated
+=== TEST 8: multiple instances with different names peek() of the same key are isolated
 --- config
     location /t {
         content_by_lua_block {
@@ -294,7 +316,7 @@ cache_2 value: value B
 
 
 
-=== TEST 8: non-namespaced instances use different delete() broadcast channel
+=== TEST 9: non-namespaced instances use different delete() broadcast channel
 --- config
     location /t {
         content_by_lua_block {
@@ -335,7 +357,7 @@ cache_2 channel: mlcache:invalidations:my_mlcache_2
 
 
 
-=== TEST 9: non-namespaced instances use different purge() broadcast channel
+=== TEST 10: non-namespaced instances use different purge() broadcast channel
 --- config
     location /t {
         content_by_lua_block {
