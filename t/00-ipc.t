@@ -868,3 +868,74 @@ my_channel event: survivor 1
 my_channel event: survivor 2
 --- no_error_log
 [crit]
+
+
+
+=== TEST 23: a failed broadcast() sets the forcible flag for new workers
+When set() fails with "no memory", the index is consumed but nothing is
+stored, leaving a hole just like an evicted event: broadcast() must raise
+the FORCIBLE_KEY flag on that failure path too, so that a worker spawned
+afterwards skips the lost run instead of replaying it.
+
+The failed event is deliberately larger than the whole zone, so its set()
+drains the LRU queue (30 forced evictions) without ever finding room and
+fails with "no memory", evicting INDEX_KEY along the way. The two survivor
+broadcasts then restart the index at 1 and 2. A worker spawned after the
+failure polls from idx 0: with the flag set it must skip straight to
+survivor 2; without it, it would replay survivor 1.
+--- http_config
+    init_worker_by_lua_block {
+        local mlcache_ipc = require "resty.mlcache.ipc"
+
+        ipc = assert(mlcache_ipc.new("ipc_shm", true))
+
+        ipc:subscribe("my_channel", function(data)
+            ngx.log(ngx.NOTICE, "my_channel event: ", data)
+        end)
+    }
+--- config
+    location /t {
+        content_by_lua_block {
+            -- events consume indexes 1 through 8
+            for i = 1, 8 do
+                assert(ipc:broadcast("my_channel", "event " .. i .. ":"
+                    .. string.rep(".", 40)))
+            end
+
+            assert(ngx.shared.ipc_shm:get("lua-resty-ipc:forcible") == nil)
+
+            -- a 2MB event cannot ever fit the 1m zone: set() fails with
+            -- "no memory" after draining the LRU queue, consuming index 9
+            -- without storing anything, and the failure path sets the
+            -- FORCIBLE_KEY flag
+            local ok, err = ipc:broadcast("my_channel", "lost:"
+                .. string.rep(".", 2 * 1024 * 1024))
+            ngx.say("broadcast: ", ok, " ", err)
+            ngx.say("forcible: ", ngx.shared.ipc_shm:get("lua-resty-ipc:forcible"))
+            ngx.say("index: ", ngx.shared.ipc_shm:get("lua-resty-ipc:index"))
+
+            assert(ipc:broadcast("my_channel", "survivor 1"))
+            assert(ipc:broadcast("my_channel", "survivor 2"))
+
+            -- simulate a worker spawned after the failure: it must skip
+            -- indexes 1 and 2 and resume at the current shm index
+            local new_worker = assert(require("resty.mlcache.ipc")
+                .new("ipc_shm", true))
+            new_worker:subscribe("my_channel", function(data)
+                ngx.log(ngx.NOTICE, "new worker event: ", data)
+            end)
+
+            assert(new_worker:poll())
+            ngx.say("new worker idx: ", new_worker.idx)
+        }
+    }
+--- response_body
+broadcast: nil failed to insert event in shm: no memory
+forcible: true
+index: nil
+new worker idx: 2
+--- error_log
+new worker event: survivor 2
+--- no_error_log
+new worker event: survivor 1
+[crit]

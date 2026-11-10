@@ -108,6 +108,14 @@ function _M:broadcast(channel, data)
 
     local ok, err, forcible = self.dict:set(idx, marshalled_event)
     if not ok then
+        -- the index was consumed but never stored: raise the forcible flag
+        -- just like the success path does, so that workers spawned after
+        -- this failure skip the missing index instead of replaying it
+        local pok = self.dict:set(FORCIBLE_KEY, true)
+        if not pok then
+            return nil, "failed to set forcible flag in shm: " .. err
+        end
+
         return nil, "failed to insert event in shm: " .. err
     end
 
