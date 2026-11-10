@@ -896,9 +896,17 @@ This method recycles the lua-resty-lrucache instance, and calls
 
 The first and only argument `flush_expired` is optional, but if given `true`,
 this method will also call
-[ngx.shared.DICT:flush_expired](https://github.com/openresty/lua-nginx-module#ngxshareddictflush_expired)
+[ngx.shared.DICT:flush_expired](https://github.com/openresty/lua-nginx-module#ngxsharedictflush_expired)
 (with no arguments). This is useful to release memory claimed by the L2 (shm)
 cache if needed.
+
+**Note:** `purge()` calls `flush_all()` on the whole `shm` and `shm_miss`
+zones, including keys stored by other mlcache instances sharing them, and
+will refuse to run when `shm_locks` is unset (flushing the shared dict
+would delete the lock of any in-flight callback, breaking the
+single-flight guarantee). Specify `opts.shm_locks` as a separate shared
+dict to be able to call `purge()`. See
+[Sizing the shared memory zones](#sizing-the-shared-memory-zones).
 
 On success, the first return value will be `true`.
 

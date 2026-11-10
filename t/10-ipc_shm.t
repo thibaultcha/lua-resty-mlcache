@@ -236,6 +236,7 @@ cache_clone has new lru: true
 
             local opts = {
                 ipc_shm = "ipc_shm",
+                shm_locks = "locks_shm",
                 debug = true -- allows same worker to receive its own published events
             }
 

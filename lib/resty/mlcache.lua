@@ -1419,6 +1419,11 @@ function _M:purge(flush_expired)
               "OpenResty < 1.13.6.2", 2)
     end
 
+    if self.shm_locks == self.shm then
+        error("cannot purge when locks and data are stored in the same " ..
+              "shm; specify opts.shm_locks as a separate shared dict", 2)
+    end
+
     -- clear shm first
     self.dict:flush_all()
 

@@ -313,6 +313,7 @@ cache_2 channel: mlcache:invalidations:my_mlcache_2
             -- create 2 mlcaches
 
             local cache_1 = assert(mlcache.new("my_mlcache_1", "cache_shm", {
+                shm_locks = "locks_shm",
                 ipc = {
                     register_listeners = function() end,
                     broadcast = function(channel)
@@ -323,6 +324,7 @@ cache_2 channel: mlcache:invalidations:my_mlcache_2
                 }
             }))
             local cache_2 = assert(mlcache.new("my_mlcache_2", "cache_shm", {
+                shm_locks = "locks_shm",
                 ipc = {
                     register_listeners = function() end,
                     broadcast = function(channel)

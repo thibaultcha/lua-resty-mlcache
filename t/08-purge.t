@@ -31,7 +31,10 @@ no ipc to propagate purge, specify opts.ipc_shm or opts.ipc
 
 
 
-=== TEST 2: purge() deletes all items from L1 + L2 (sanity 1/2)
+=== TEST 2: purge() errors if locks and data share the same shm
+flush_all() on the shared dict would delete the lock of any in-flight
+callback, letting another worker acquire it and run the callback
+concurrently, breaking the single-flight guarantee.
 --- config
     location /t {
         content_by_lua_block {
@@ -39,6 +42,28 @@ no ipc to propagate purge, specify opts.ipc_shm or opts.ipc
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
                 ipc_shm = "ipc_shm",
+            }))
+
+            local pok, perr = pcall(cache.purge, cache)
+            ngx.say("purge: ", pok, " ", perr)
+        }
+    }
+--- response_body
+purge: false cannot purge when locks and data are stored in the same shm; specify opts.shm_locks as a separate shared dict
+--- no_error_log
+[error]
+
+
+
+=== TEST 3: purge() deletes all items from L1 + L2 (sanity 1/2)
+--- config
+    location /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
+                ipc_shm = "ipc_shm",
+                shm_locks = "locks_shm",
             }))
 
             -- populate mlcache
@@ -73,7 +98,7 @@ ok
 
 
 
-=== TEST 3: purge() deletes all items from L1 (sanity 2/2)
+=== TEST 4: purge() deletes all items from L1 (sanity 2/2)
 --- config
     location /t {
         content_by_lua_block {
@@ -81,6 +106,7 @@ ok
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
                 ipc_shm = "ipc_shm",
+                shm_locks = "locks_shm",
             }))
 
             -- populate mlcache
@@ -111,7 +137,7 @@ ok
 
 
 
-=== TEST 4: purge() deletes all items from L1 with a custom LRU
+=== TEST 5: purge() deletes all items from L1 with a custom LRU
 --- skip_eval: 3: t::TestMLCache::skip_openresty('<', '1.13.6.2')
 --- config
     location /t {
@@ -123,6 +149,7 @@ ok
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
                 ipc_shm = "ipc_shm",
+                shm_locks = "locks_shm",
                 lru = lru,
             }))
 
@@ -156,7 +183,7 @@ lru instance is the same one: true
 
 
 
-=== TEST 5: purge() is prevented if custom LRU does not support flush_all()
+=== TEST 6: purge() is prevented if custom LRU does not support flush_all()
 --- skip_eval: 3: t::TestMLCache::skip_openresty('>', '1.13.6.1')
 --- config
     location /t {
@@ -166,6 +193,7 @@ lru instance is the same one: true
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
                 ipc_shm = "ipc_shm",
+                shm_locks = "locks_shm",
                 lru = lrucache.new(10),
             }))
 
@@ -185,7 +213,7 @@ cannot purge when using custom LRU cache with OpenResty < 1.13.6.2
 
 
 
-=== TEST 6: purge() deletes all items from shm_miss is specified
+=== TEST 7: purge() deletes all items from shm_miss is specified
 --- config
     location /t {
         content_by_lua_block {
@@ -193,6 +221,7 @@ cannot purge when using custom LRU cache with OpenResty < 1.13.6.2
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
                 ipc_shm = "ipc_shm",
+                shm_locks = "locks_shm",
                 shm_miss = "cache_shm_miss",
             }))
 
@@ -230,7 +259,7 @@ ok
 
 
 
-=== TEST 7: purge() does not call shm:flush_expired() by default
+=== TEST 8: purge() does not call shm:flush_expired() by default
 --- config
     location /t {
         content_by_lua_block {
@@ -250,6 +279,7 @@ ok
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
                 ipc_shm = "ipc_shm",
+                shm_locks = "locks_shm",
             }))
 
             assert(cache:purge())
@@ -262,7 +292,7 @@ flush_expired called with 'max_count'
 
 
 
-=== TEST 8: purge() calls shm:flush_expired() if argument specified
+=== TEST 9: purge() calls shm:flush_expired() if argument specified
 --- config
     location /t {
         content_by_lua_block {
@@ -284,6 +314,7 @@ flush_expired called with 'max_count'
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
                 ipc_shm = "ipc_shm",
+                shm_locks = "locks_shm",
             }))
 
             assert(cache:purge(true))
@@ -296,7 +327,7 @@ flush_expired called with 'max_count': nil
 
 
 
-=== TEST 9: purge() calls shm:flush_expired() if shm_miss is specified
+=== TEST 10: purge() calls shm:flush_expired() if shm_miss is specified
 --- config
     location /t {
         content_by_lua_block {
@@ -318,6 +349,7 @@ flush_expired called with 'max_count': nil
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
                 ipc_shm = "ipc_shm",
+                shm_locks = "locks_shm",
                 shm_miss = "cache_shm_miss",
             }))
 
@@ -332,13 +364,14 @@ flush_expired called with 'max_count': nil
 
 
 
-=== TEST 10: purge() calls broadcast() on purge channel
+=== TEST 11: purge() calls broadcast() on purge channel
 --- config
     location /t {
         content_by_lua_block {
             local mlcache = require "resty.mlcache"
 
             local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
+                shm_locks = "locks_shm",
                 ipc = {
                     register_listeners = function() end,
                     broadcast = function(channel, data, ...)
