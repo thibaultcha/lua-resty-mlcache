@@ -848,6 +848,12 @@ updates the L2 cache with the fresh value, other workers will rely on
 [update()](#update) to poll the invalidation event and invalidate their L1
 cache, which will make them fetch the (fresh) value in L2.
 
+**Note ter:** the local L1/L2 update happens before the broadcast, so if the
+broadcast fails, `set()` (as well as [delete()](#delete) and [purge()](#purge))
+returns an error while this worker's cache is already updated: other workers
+keep serving their current L1 value until their next successful
+[update()](#update).
+
 **See:** [update()](#update)
 
 [Back to TOC](#table-of-contents)
@@ -957,6 +963,11 @@ access in the best case scenario: no invalidation events were received, all
 values were evicted by another worker) will `get()` access the L2 or L3 cache
 `n` times. Subsequent requests will then hit the best case scenario again,
 because `get()` populated the L1 cache.
+
+**Note:** event propagation is best-effort: if `update()` returns an error
+(for example a `timeout`), some invalidation events may not have been
+processed yet by this worker, which will keep serving its current L1 values
+until the next successful `update()`.
 
 For example, if your workers make use of [set()](#set), [delete()](#delete), or
 [purge()](#purge) anywhere in your application, call `update()` at the entrance
