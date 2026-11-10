@@ -82,6 +82,7 @@ This library has been presented at **OpenResty Con 2018**.  See the
     - [delete](#delete)
     - [purge](#purge)
     - [update](#update)
+- [Sizing the shared memory zones](#sizing-the-shared-memory-zones)
 - [Resources](#resources)
 - [Changelog](#changelog)
 - [License](#license)
@@ -257,7 +258,9 @@ holding the desired options for this instance. The possible options are:
   callbacks) purges the oldest 30 accessed items. These purged items are most
   likely to be previously (and valuable) cached values. By isolating locks in a
   separate shared dict, workloads experiencing cache churning can mitigate this
-  effect.
+  effect. Size it generously: if a lock cannot be created (`no memory`),
+  `get()` returns an error instead of running the L3 callback. See
+  [Sizing the shared memory zones](#sizing-the-shared-memory-zones).
 - `resty_lock_opts`: _optional_ table. Options for [lua-resty-lock] instances.
   When mlcache runs the L3 callback, it uses lua-resty-lock to ensure that a
   single worker runs the provided callback.
@@ -268,6 +271,7 @@ holding the desired options for this instance. The possible options are:
   library, and you can enable it by specifying a dedicated `lua_shared_dict` in
   this option. Several mlcache instances can use the same shared dict (events
   will be namespaced), but no other actor than mlcache should tamper with it.
+  See [Sizing the shared memory zones](#sizing-the-shared-memory-zones).
 - `ipc`: _optional_ table. Like the above `ipc_shm` option, but lets you use
   the IPC library of your choice to propagate inter-worker events.
 - `l1_serializer`: _optional_ function. Its signature and accepted values are
@@ -1021,6 +1025,60 @@ this library, if an IPC library can avoid the polling approach, so will this
 library. `update()` is only a necessary evil due to today's Nginx/OpenResty
 "limitations". You can however use your own IPC library by use of the
 `opts.ipc` option when creating your mlcache instance.
+
+[Back to TOC](#table-of-contents)
+
+# Sizing the shared memory zones
+
+mlcache can use up to four `lua_shared_dict` zones: `shm`, `shm_miss`,
+`shm_locks`, and `ipc_shm`. Each stored item costs a few layers of overhead,
+bottom-up:
+
+1. **`lua_shared_dict` node header: ~72 bytes.** Every key stored in a shared
+   dict pays this fixed header (rbtree node + LRU queue + bookkeeping), on
+   top of the key and value bytes.
+2. **Slab size classes.** Allocations are rounded up to the next power of two
+   (8, 16, ..., 2048 bytes; larger allocations get whole 4KB pages). One 4KB
+   page holds 4096/class bytes worth of slots, so a 256-byte item costs 256
+   bytes of page space, not 250.
+3. **mlcache marshalling envelope: ~40 bytes.** Cached values are stored as
+   marshalled strings (`type:insertion-time:ttl:value`), so a Lua value is
+   stored as its serialized form (numbers ~3 bytes, strings as-is, tables
+   their JSON encoding) plus the ~40-byte envelope.
+
+Layered example: caching the number `123` under a 30-byte key costs
+~72 (header) + 30 (key) + 43 (marshalled value: 3 bytes for `123` plus the
+~40-byte envelope) = ~145 bytes, rounded up to the 256-byte class: **~256
+bytes of zone space per small item**.
+
+Two more allocator-level properties that matter:
+
+- **Small zones waste a disproportionate share on bookkeeping** (one 32-byte
+  struct per page plus per-slot statistics). Zones under ~100KB can lose half
+  their capacity or more; use at least `1m` for any zone that holds real
+  traffic, and only go smaller for trivially small workloads.
+- **Items are evicted LRU-oldest-first** when a zone fills: undersizing
+  silently degrades hit rate rather than erroring. When unsure, start at
+  `10m` and adjust using `ngx.shared.DICT:free_space()` under production
+  load.
+
+Sizing directions per zone:
+
+- `shm` and `shm_miss`: number of live items × per-item cost (above), with
+  headroom. `shm_miss` is only used when `opts.shm_miss` is set, and exists
+  precisely to absorb miss bursts, so it should hold the misses you expect
+  between evictions.
+- `shm_locks`: one lock per in-flight L3 callback key (~128 bytes each), so
+  a few concurrent misses per worker at a time suffice in the common case.
+  Size it generously anyway (a few KB per expected concurrent callback is
+  ample): if a lock cannot be created (`no memory`), `get()` returns an
+  error instead of running the L3 callback.
+- `ipc_shm`: holds in-flight IPC events plus the index. Each event costs
+  ~100 bytes plus its payload for small messages. Events are evicted LRU
+  when the zone fills, which leaves recoverable holes in the event stream
+  (see the `poll()` implementation), but an undersized zone means lost
+  invalidations: size it to hold the broadcast burst you expect between
+  polls (default poll interval is 300ms).
 
 [Back to TOC](#table-of-contents)
 
