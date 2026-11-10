@@ -861,6 +861,14 @@ On success, the first return value will be `true`.
 
 On failure, this method returns `nil` and a string describing the error.
 
+**Note:** `delete()` holds the same lock as the L3 callback for this key,
+so a concurrent callback refreshing the value is serialized with the
+deletion: it either completes before the value is deleted, or runs after
+the deletion completes (and its fresh value is not spuriously deleted).
+If a callback holds the lock, `delete()` waits up to the timeout configured
+via `opts.resty_lock_opts.timeout` (5000ms by default), and then proceeds
+with the deletion anyway.
+
 **Note:** by its nature, `delete()` requires that other instances of mlcache
 (from other workers) refresh their L1 cache. If `delete()` is called from a
 single worker, other workers' mlcache instances bearing the same `name` must

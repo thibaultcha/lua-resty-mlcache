@@ -226,3 +226,59 @@ data: my_key
 other args:
 --- no_error_log
 [error]
+
+
+
+=== TEST 6: delete() takes the callback lock
+delete() must hold the same lock key as run_callback(): a concurrent
+worker that fetched the value before the deletion and re-stores it after
+is serialized by the lock, so it cannot resurrect a deleted value.
+--- config
+    location /t {
+        content_by_lua_block {
+            local resty_lock = require "resty.lock"
+            local mlcache = require "resty.mlcache"
+
+            local cache = assert(mlcache.new("my_mlcache", "cache_shm", {
+                ipc = {
+                    register_listeners = function() end,
+                    broadcast = function() return true end,
+                    poll = function() end,
+                },
+                resty_lock_opts = { timeout = 0.3 },
+            }))
+
+            local function cb()
+                return 123
+            end
+
+            -- populate the cache
+            assert(cache:get("key", nil, cb))
+
+            -- hold the callback lock as a concurrent worker would, and
+            -- give delete() a short lock timeout: it must wait (and give
+            -- up after the timeout) instead of deleting mid-callback
+            local lock = assert(resty_lock:new("cache_shm"))
+            local lock_key = "lua-resty-mlcache:lock:"
+                             .. cache.name .. "key"
+            assert(lock:lock(lock_key))
+            ngx.say("lock held: ",
+                    ngx.shared.cache_shm:get(lock_key) ~= nil)
+
+            ngx.update_time()
+            local t0 = ngx.now()
+            local ok, err = cache:delete("key")
+            local dt = ngx.now() - t0
+
+            ngx.say("delete: ", ok, " ", err)
+            ngx.say("delete waited: ", dt >= 0.25)
+
+            assert(lock:unlock())
+        }
+    }
+--- response_body
+lock held: true
+delete: true nil
+delete waited: true
+--- no_error_log
+[error]

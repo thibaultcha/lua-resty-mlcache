@@ -1358,19 +1358,42 @@ function _M:delete(key)
         -- shm
         local namespaced_key = self.name .. key
 
-        local ok, err = self.dict:delete(namespaced_key)
-        if not ok then
-            return nil, "could not delete from shm: " .. err
+        -- take the callback lock: a concurrent worker may have fetched the
+        -- value before our deletion and re-store it after; holding the lock
+        -- ensures such a worker either completes before we delete (its
+        -- value is deleted too), or waits until we are done before storing
+        -- (its fresh value survives)
+        local lock, lerr = resty_lock:new(self.shm_locks,
+                                          self.resty_lock_opts)
+        if not lock then
+            return nil, "could not create lock: " .. lerr
         end
 
-        -- instance uses shm_miss for negative caches, since we don't know
-        -- where the cached value is (is it nil or not?), we must remove it
-        -- from both
-        if self.dict_miss then
-            ok, err = self.dict_miss:delete(namespaced_key)
+        local elapsed, lerr = lock:lock(LOCK_KEY_PREFIX .. namespaced_key)
+        if not elapsed and lerr ~= "timeout" then
+            return nil, "could not acquire deletion lock: " .. lerr
+        end
+
+        do
+            local ok, err = self.dict:delete(namespaced_key)
             if not ok then
                 return nil, "could not delete from shm: " .. err
             end
+
+            -- instance uses shm_miss for negative caches, since we don't know
+            -- where the cached value is (is it nil or not?), we must remove it
+            -- from both
+            if self.dict_miss then
+                ok, err = self.dict_miss:delete(namespaced_key)
+                if not ok then
+                    return nil, "could not delete from shm: " .. err
+                end
+            end
+        end
+
+        local ok, lerr = lock:unlock()
+        if not ok and lerr ~= "unlocked" then
+            return nil, "could not unlock deletion: " .. lerr
         end
     end
 
