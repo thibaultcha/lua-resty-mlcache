@@ -146,7 +146,38 @@ cache_2 shm has: value B
 
 
 
-=== TEST 5: multiple instances with different names delete() of the same key are isolated
+=== TEST 5: namespaced shm keys cannot collide across instances
+The shm key prefix is delimited by a control character, so an instance
+named "ab" holding key "c" cannot collide with an instance named "a"
+holding key "bc" (concatenation alone would yield "abc" for both).
+--- config
+    location /t {
+        content_by_lua_block {
+            local mlcache = require "resty.mlcache"
+
+            local cache_ab = assert(mlcache.new("ab", "cache_shm"))
+            local cache_a = assert(mlcache.new("a", "cache_shm"))
+
+            assert(cache_ab:get("c", nil, function() return "from ab" end))
+            assert(cache_a:get("bc", nil, function() return "from a" end))
+
+            -- evict L1 to force the next get() calls to hit the shm
+            cache_ab.lru:delete("c")
+            cache_a.lru:delete("bc")
+
+            ngx.say("ab/c: ", (select(1, assert(cache_ab:get("c", nil, function() end)))))
+            ngx.say("a/bc: ", (select(1, assert(cache_a:get("bc", nil, function() end)))))
+        }
+    }
+--- response_body
+ab/c: from ab
+a/bc: from a
+--- no_error_log
+[error]
+
+
+
+=== TEST 6: multiple instances with different names delete() of the same key are isolated
 --- config
     location /t {
         content_by_lua_block {
@@ -168,7 +199,7 @@ cache_2 shm has: value B
 
             -- test if value is set from shm (safer to check due to the key)
 
-            local shm_v = ngx.shared.cache_shm:get(cache_1.name .. "my_key")
+            local shm_v = ngx.shared.cache_shm:get(cache_1.name .. "\0my_key")
             ngx.say("cache_1 shm has a value: ", shm_v ~= nil)
 
             -- delete value from mlcache 1
@@ -183,12 +214,12 @@ cache_2 shm has: value B
 
             -- ensure cache 1 key is deleted from shm
 
-            local shm_v = ngx.shared.cache_shm:get(cache_1.name .. "my_key")
+            local shm_v = ngx.shared.cache_shm:get(cache_1.name .. "\0my_key")
             ngx.say("cache_1 shm has: ", shm_v)
 
             -- ensure cache 2 still has its value
 
-            local shm_v_2 = ngx.shared.cache_shm:get(cache_2.name .. "my_key")
+            local shm_v_2 = ngx.shared.cache_shm:get(cache_2.name .. "\0my_key")
             ngx.say("cache_2 shm has a value: ", shm_v_2 ~= nil)
 
             local lru_v_2 = cache_2.lru:get("my_key")
@@ -207,7 +238,7 @@ cache_2 lru has: value B
 
 
 
-=== TEST 6: multiple instances with different names peek() of the same key are isolated
+=== TEST 7: multiple instances with different names peek() of the same key are isolated
 --- config
     location /t {
         content_by_lua_block {
@@ -263,7 +294,7 @@ cache_2 value: value B
 
 
 
-=== TEST 7: non-namespaced instances use different delete() broadcast channel
+=== TEST 8: non-namespaced instances use different delete() broadcast channel
 --- config
     location /t {
         content_by_lua_block {
@@ -304,7 +335,7 @@ cache_2 channel: mlcache:invalidations:my_mlcache_2
 
 
 
-=== TEST 8: non-namespaced instances use different purge() broadcast channel
+=== TEST 9: non-namespaced instances use different purge() broadcast channel
 --- config
     location /t {
         content_by_lua_block {

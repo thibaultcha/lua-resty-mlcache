@@ -82,14 +82,14 @@ key must be a string
 
             -- test if value is set from shm (safer to check due to the key)
 
-            local v = ngx.shared.cache_shm:get(cache.name .. "key")
+            local v = ngx.shared.cache_shm:get(cache.name .. "\0key")
             ngx.say("shm has value before delete: ", v ~= nil)
 
             -- delete the value
 
             assert(cache:delete("key"))
 
-            local v = ngx.shared.cache_shm:get(cache.name .. "key")
+            local v = ngx.shared.cache_shm:get(cache.name .. "\0key")
             ngx.say("shm has value after delete: ", v ~= nil)
 
             -- ensure LRU was also deleted
@@ -157,14 +157,14 @@ from callback: 456
 
             -- test if value is set from shm (safer to check due to the key)
 
-            local v = ngx.shared.cache_shm_miss:get(cache.name .. "key")
+            local v = ngx.shared.cache_shm_miss:get(cache.name .. "\0key")
             ngx.say("shm_miss has value before delete: ", v ~= nil)
 
             -- delete the value
 
             assert(cache:delete("key"))
 
-            local v = ngx.shared.cache_shm_miss:get(cache.name .. "key")
+            local v = ngx.shared.cache_shm_miss:get(cache.name .. "\0key")
             ngx.say("shm_miss has value after delete: ", v ~= nil)
 
             -- ensure LRU was also deleted
@@ -260,7 +260,7 @@ is serialized by the lock, so it cannot resurrect a deleted value.
             -- up after the timeout) instead of deleting mid-callback
             local lock = assert(resty_lock:new("cache_shm"))
             local lock_key = "lua-resty-mlcache:lock:"
-                             .. cache.name .. "key"
+                             .. cache.name .. "\0key"
             assert(lock:lock(lock_key))
             ngx.say("lock held: ",
                     ngx.shared.cache_shm:get(lock_key) ~= nil)

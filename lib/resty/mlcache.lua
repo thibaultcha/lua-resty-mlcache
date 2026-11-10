@@ -55,6 +55,7 @@ local ERR          = ngx.ERR
 
 local CACHE_MISS_SENTINEL_LRU = {}
 local LOCK_KEY_PREFIX = "lua-resty-mlcache:lock:"
+local NS_KEY_DELIM = "\0"
 local LRU_INSTANCES = setmetatable({}, { __mode = "v" })
 local SHM_SET_DEFAULT_TRIES = 3
 local BULK_DEFAULT_CONCURRENCY = 3
@@ -327,6 +328,11 @@ function _M.new(name, shm, opts)
         shm_set_tries   = opts.shm_set_tries or SHM_SET_DEFAULT_TRIES,
         debug           = opts.debug,
     }
+
+    -- namespaced shm key prefix: the delimiter ensures that instances
+    -- named "ab" (key "c") cannot collide with instances named "a" (key
+    -- "bc"), and that namespaced keys cannot collide with user keys
+    self.ns_prefix = name .. NS_KEY_DELIM
 
     if opts.ipc_shm or opts.ipc then
         self.events = {
@@ -886,7 +892,7 @@ function _M:get(key, opts, cb, ...)
     -- restrict this key to the current namespace, so we isolate this
     -- mlcache instance from potential other instances using the same
     -- shm
-    local namespaced_key = self.name .. key
+    local namespaced_key = self.ns_prefix .. key
 
     -- opts validation
 
@@ -1067,7 +1073,7 @@ function _M:get_bulk(bulk, opts)
 
             -- not in worker's LRU cache, need shm lookup
             -- we will prepare a task for each cache miss
-            local namespaced_key = self.name .. b_key
+            local namespaced_key = self.ns_prefix .. b_key
 
             local err, went_stale, is_stale
             data, err, went_stale, is_stale = get_shm_set_lru(self, b_key,
@@ -1246,7 +1252,7 @@ function _M:peek(key, stale)
     -- restrict this key to the current namespace, so we isolate this
     -- mlcache instance from potential other instances using the same
     -- shm
-    local namespaced_key = self.name .. key
+    local namespaced_key = self.ns_prefix .. key
 
     local v, err, went_stale = self.dict:get_stale(namespaced_key)
     if v == nil and err then
@@ -1308,7 +1314,7 @@ function _M:set(key, opts, value)
         -- shm
         local ttl, neg_ttl, _, l1_serializer, shm_set_tries = check_opts(self,
                                                                          opts)
-        local namespaced_key = self.name .. key
+        local namespaced_key = self.ns_prefix .. key
 
         if self.dict_miss then
             -- since we specified a separate shm for negative caches, we
@@ -1356,7 +1362,7 @@ function _M:delete(key)
         -- restrict this key to the current namespace, so we isolate this
         -- mlcache instance from potential other instances using the same
         -- shm
-        local namespaced_key = self.name .. key
+        local namespaced_key = self.ns_prefix .. key
 
         -- take the callback lock: a concurrent worker may have fetched the
         -- value before our deletion and re-store it after; holding the lock

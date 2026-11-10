@@ -74,7 +74,7 @@ no such lua_shared_dict for opts.shm_locks: foo
             cache:get("key", nil, cb)
         }
     }
---- response_body
-1: lua-resty-mlcache:lock:namekey
+--- response_body eval
+"1: lua-resty-mlcache:lock:name\x00key\n"
 --- no_error_log
 [error]

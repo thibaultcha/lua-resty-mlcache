@@ -457,7 +457,7 @@ from shm: nil nil
             -- direct shm checks
             -- concat key since shm values are namespaced per their the
             -- mlcache name
-            local key = "my_mlcachekey"
+            local key = "my_mlcache\0key"
 
             local v, err = dict:get(key)
             if err then
