@@ -193,6 +193,7 @@ called lru:delete() with key: my_key
 
             local opts = {
                 ipc_shm = "ipc_shm",
+                shm_locks = "locks_shm",
                 debug = true -- allows same worker to receive its own published events
             }
 
