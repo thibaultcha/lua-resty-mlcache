@@ -1,5 +1,6 @@
 # Table of Contents
 
+- [2.8.0](#280)
 - [2.7.0](#270)
 - [2.6.1](#261)
 - [2.6.0](#260)
@@ -15,6 +16,52 @@
 - [2.0.0](#200)
 - [1.0.1](#101)
 - [1.0.0](#100)
+
+## [2.8.0]
+
+> Released on: 2026/11/10
+
+#### Changed
+
+- Namespace shared memory keys with a NUL delimiter between the instance
+  name and the key, preventing key collisions between instances whose names
+  form prefix relationships (e.g. an instance named `a` holding key `bc`
+  used to collide with an instance named `ab` holding key `c`), and
+  separating namespaced keys from user keys sharing the same dict.
+  **Note:** this changes the shm key format: existing L2 entries are
+  invisible after an upgrade, causing a one-time cold start until TTL
+  expiry.
+- Share the L1 (lua-resty-lrucache) instance per name + shm pair instead of
+  name only: instances with the same name but different shms no longer share
+  their L1 cache, which could serve values that do not exist in their own
+  shm.
+- `purge()` now refuses to run when `shm_locks` is unset: flushing the shm
+  would delete the lock of in-flight callbacks, breaking the single-flight
+  guarantee.
+- `delete()` now holds the same lock as the L3 callback for the key, so a
+  concurrent callback can no longer re-store a value after it was deleted.
+  On lock timeout, `delete()` proceeds with the deletion, mirroring the
+  `run_callback()` timeout behavior.
+
+#### Fixed
+
+- `ipc:poll()` only stepped over one lost event per call, so a run of lost
+  events (evicted, or consumed by a failed insertion) cost the full timeout
+  per event, and a busy writer could outpace the reader forever.
+  [#130](https://github.com/thibaultcha/lua-resty-mlcache/issues/130)
+  [#131](https://github.com/thibaultcha/lua-resty-mlcache/pull/131)
+- `ipc:broadcast()` now sets the `forcible` flag when an event insertion
+  fails, so that workers spawned afterwards skip the lost run instead of
+  replaying it.
+
+#### Added
+
+- New documentation section
+  [Sizing the shared memory zones](README.md#sizing-the-shared-memory-zones)
+  documenting the per-item memory cost and sizing directions for the `shm`,
+  `shm_miss`, `shm_locks`, and `ipc_shm` zones.
+
+[Back to TOC](#table-of-contents)
 
 ## [2.7.0]
 
@@ -289,6 +336,7 @@ Initial release.
 
 [Back to TOC](#table-of-contents)
 
+[2.8.0]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.7.0...2.8.0
 [2.7.0]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.6.1...2.7.0
 [2.6.1]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.6.0...2.6.1
 [2.6.0]: https://github.com/thibaultcha/lua-resty-mlcache/compare/2.5.0...2.6.0
