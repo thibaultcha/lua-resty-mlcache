@@ -23,6 +23,7 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         openresty:
+          - 1.31.8.1
           - 1.25.3.1
           - 1.21.4.3
           - 1.19.9.1
@@ -49,7 +50,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        openresty: [1.19.9.1]
+        openresty: [1.31.8.1]
     steps:
       - uses: actions/checkout@v2
       - name: Setup OpenResty
