@@ -37,7 +37,7 @@ jobs:
         run: echo "OPENRESTY_VER=${{ github.event.inputs.openresty }}" >> $GITHUB_ENV
       - if:  ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
         run: echo "OPENRESTY_VER=${{ matrix.openresty }}" >> $GITHUB_ENV
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Setup OpenResty
         uses: thibaultcha/setup-openresty@main
         with:
@@ -52,7 +52,7 @@ jobs:
         os: [ubuntu-latest]
         openresty: [1.31.8.1]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Setup OpenResty
         uses: thibaultcha/setup-openresty@main
         with:
