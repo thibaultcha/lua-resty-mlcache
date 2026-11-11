@@ -970,6 +970,103 @@ because `get()` populated the L1 cache.
 processed yet by this worker, which will keep serving its current L1 values
 until the next successful `update()`.
 
+Two patterns are supported to call `update()`:
+
+**Once per request**, at the entrance of the hot code path, before the first
+`get()` call. Each request sees a consistent view of the L1 cache: invalidations
+are applied at most once per request, and the whole request is served from L1 in
+the best case (single shm access).
+
+```
+http {
+    listen 9000;
+
+    location / {
+        content_by_lua_block {
+            local cache = ... -- retrieve mlcache instance
+
+            -- make sure L1 cache is evicted of stale values
+            -- before calling get()
+            local ok, err = cache:update()
+            if not ok then
+                ngx.log(ngx.ERR, "failed to poll eviction events: ", err)
+                -- /!\ we might get stale data from get()
+            end
+
+            -- L1/L2/L3 lookup (best case: L1)
+            local value, err = cache:get("key_1", nil, cb1)
+
+            -- L1/L2/L3 lookup (best case: L1)
+            local other_value, err = cache:get(key_2", nil, cb2)
+
+            -- value and other_value are up-to-date because:
+            -- either they were not stale and directly came from L1 (best case scenario)
+            -- either they were stale and evicted from L1, and came from L2
+            -- either they were not in L1 nor L2, and came from L3 (worst case scenario)
+        }
+    }
+
+    location /delete {
+        content_by_lua_block {
+            local cache = ... -- retrieve mlcache instance
+
+            -- delete some value
+            local ok, err = cache:delete("key_1")
+            if not ok then
+                ngx.log(ngx.ERR, "failed to delete value from cache: ", err)
+                return ngx.exit(500)
+            end
+
+            ngx.exit(204)
+        }
+    }
+
+    location /set {
+        content_by_lua_block {
+            local cache = ... -- retrieve mlcache instance
+
+            -- update some value
+            local ok, err = cache:set("key_1", nil, 123)
+            if not ok then
+                ngx.log(ngx.ERR, "failed to set value in cache: ", err)
+                return ngx.exit(500)
+            end
+
+            ngx.exit(200)
+        }
+    }
+}
+```
+
+**From a repeating background timer**, started in
+[init_worker_by_lua](https://github.com/openresty/lua-nginx-module#init_worker_by_lua).
+Suitable for hot paths that must not pay the `update()` shm access (however
+small) or be refreshed more often, at the cost of serving values invalidated
+after the last timer tick until the next one.
+
+```
+init_worker_by_lua_block {
+    local mlcache = require "resty.mlcache"
+
+    local cache = assert(mlcache.new("my_cache", "cache_shm", {
+        ipc_shm = "ipc_shm",
+    }))
+
+    local ok, err = ngx.timer.every(0.3, function(premature)
+        if premature then
+            return
+        end
+
+        assert(cache:update())
+    end)
+    if not ok then
+        error("failed to create timer: " .. err)
+    end
+}
+```
+
+With this pattern, do not call `update()` in the request handler. Workers using
+it serve stale values for at most one timer period after an invalidation.
 
 **Note:** you **do not** need to call `update()` to refresh your workers if
 they never call `set()`, `delete()`, or `purge()`. When workers only rely on
