@@ -970,73 +970,9 @@ because `get()` populated the L1 cache.
 processed yet by this worker, which will keep serving its current L1 values
 until the next successful `update()`.
 
-For example, if your workers make use of [set()](#set), [delete()](#delete), or
-[purge()](#purge) anywhere in your application, call `update()` at the entrance
-of your hot code path, before using `get()`:
-
-```
-http {
-    listen 9000;
-
-    location / {
-        content_by_lua_block {
-            local cache = ... -- retrieve mlcache instance
-
-            -- make sure L1 cache is evicted of stale values
-            -- before calling get()
-            local ok, err = cache:update()
-            if not ok then
-                ngx.log(ngx.ERR, "failed to poll eviction events: ", err)
-                -- /!\ we might get stale data from get()
-            end
-
-            -- L1/L2/L3 lookup (best case: L1)
-            local value, err = cache:get("key_1", nil, cb1)
-
-            -- L1/L2/L3 lookup (best case: L1)
-            local other_value, err = cache:get(key_2", nil, cb2)
-
-            -- value and other_value are up-to-date because:
-            -- either they were not stale and directly came from L1 (best case scenario)
-            -- either they were stale and evicted from L1, and came from L2
-            -- either they were not in L1 nor L2, and came from L3 (worst case scenario)
-        }
-    }
-
-    location /delete {
-        content_by_lua_block {
-            local cache = ... -- retrieve mlcache instance
-
-            -- delete some value
-            local ok, err = cache:delete("key_1")
-            if not ok then
-                ngx.log(ngx.ERR, "failed to delete value from cache: ", err)
-                return ngx.exit(500)
-            end
-
-            ngx.exit(204)
-        }
-    }
-
-    location /set {
-        content_by_lua_block {
-            local cache = ... -- retrieve mlcache instance
-
-            -- update some value
-            local ok, err = cache:set("key_1", nil, 123)
-            if not ok then
-                ngx.log(ngx.ERR, "failed to set value in cache: ", err)
-                return ngx.exit(500)
-            end
-
-            ngx.exit(200)
-        }
-    }
-}
-```
 
 **Note:** you **do not** need to call `update()` to refresh your workers if
-they never call `set()`,  `delete()`, or `purge()`. When workers only rely on
+they never call `set()`, `delete()`, or `purge()`. When workers only rely on
 `get()`, values expire naturally from the L1/L2 caches according to their TTL.
 
 **Note bis:** this library was built with the intent to use a better solution
@@ -1054,51 +990,54 @@ mlcache can use up to four `lua_shared_dict` zones: `shm`, `shm_miss`,
 `shm_locks`, and `ipc_shm`. Each stored item costs a few layers of overhead,
 bottom-up:
 
-1. **`lua_shared_dict` node header: ~72 bytes.** Every key stored in a shared
-   dict pays this fixed header (rbtree node + LRU queue + bookkeeping), on
-   top of the key and value bytes.
-2. **Slab size classes.** Allocations are rounded up to the next power of two
-   (8, 16, ..., 2048 bytes; larger allocations get whole 4KB pages). One 4KB
-   page holds 4096/class bytes worth of slots, so a 256-byte item costs 256
-   bytes of page space, not 250.
-3. **mlcache marshalling envelope: ~40 bytes.** Cached values are stored as
-   marshalled strings (`type:insertion-time:ttl:value`), so a Lua value is
-   stored as its serialized form (numbers ~3 bytes, strings as-is, tables
-   their JSON encoding) plus the ~40-byte envelope.
+1. **`lua_shared_dict` node header: ~72 bytes.** Fixed cost paid by every key
+   (rbtree node + LRU queue + bookkeeping), on top of the key and value
+   bytes.
+2. **mlcache marshalling envelope: ~40 bytes.** Cached values are stored as
+   marshalled strings (`type:insertion-time:ttl:value`): the serialized
+   value (numbers ~3 bytes, strings as-is, tables their JSON encoding) plus
+   the ~40-byte envelope.
+3. **Slab size classes.** Allocations are rounded up to the next power of two
+   (8, 16, ..., 2048 bytes; larger allocations get whole 4KB pages), so a
+   250-byte allocation occupies a 256-byte slot: the rounding is never
+   reclaimed. One 4KB page holds 4096/class bytes worth of slots.
 
-Layered example: caching the number `123` under a 30-byte key costs
-~72 (header) + 30 (key) + 43 (marshalled value: 3 bytes for `123` plus the
-~40-byte envelope) = ~145 bytes, rounded up to the 256-byte class: **~256
-bytes of zone space per small item**.
+**Layered example**: caching the number `123` under a 30-byte key costs
+~72 (header) + 30 (key) + 43 (marshalled value) = ~145 bytes, rounded up to
+the 256-byte class: **~256 bytes of zone space per small item**.
 
 Two more allocator-level properties that matter:
 
 - **Small zones waste a disproportionate share on bookkeeping** (one 32-byte
-  struct per page plus per-slot statistics). Zones under ~100KB can lose half
-  their capacity or more; use at least `1m` for any zone that holds real
-  traffic, and only go smaller for trivially small workloads.
+  struct per page plus per-slot statistics). Use at least `1m` for any zone
+  that holds real traffic.
 - **Items are evicted LRU-oldest-first** when a zone fills: undersizing
   silently degrades hit rate rather than erroring. When unsure, start at
   `10m` and adjust using `ngx.shared.DICT:free_space()` under production
   load.
 
-Sizing directions per zone:
+Compute each item's cost with the layers above (header + key bytes + value
+bytes, rounded up to the slab size class), then apply the formula:
 
-- `shm` and `shm_miss`: number of live items × per-item cost (above), with
-  headroom. `shm_miss` is only used when `opts.shm_miss` is set, and exists
-  precisely to absorb miss bursts, so it should hold the misses you expect
-  between evictions.
-- `shm_locks`: one lock per in-flight L3 callback key (~128 bytes each), so
-  a few concurrent misses per worker at a time suffice in the common case.
-  Size it generously anyway (a few KB per expected concurrent callback is
-  ample): if a lock cannot be created (`no memory`), `get()` returns an
-  error instead of running the L3 callback.
-- `ipc_shm`: holds in-flight IPC events plus the index. Each event costs
-  ~100 bytes plus its payload for small messages. Events are evicted LRU
-  when the zone fills, which leaves recoverable holes in the event stream
-  (see the `poll()` implementation), but an undersized zone means lost
-  invalidations: size it to hold the broadcast burst you expect between
-  polls (default poll interval is 300ms).
+- `shm` and `shm_miss`: **zone size ≈ max number of live values × per-item
+  cost**. An item's cost follows the size classes as the key or value grows: a
+  30-byte key holding a 3-byte number costs ~256 bytes, ~512 bytes with
+  `len(instance name) + len(key) <= 146`, and so on. `shm_miss` (negative
+  caches) is only used when `opts.shm_miss` is set, same sizing guideline.
+- `shm_locks`: **zone size ≈ number of concurrent L3 callbacks across all
+  workers × per-lock cost**. A lock costs ~128 bytes as long as
+  `len(instance name) + len(key) <= 35` bytes, then ~256 bytes up to
+  `<= 163` bytes, and so on (each slab size class doubles). Size for miss
+  bursts too (a cold start on 1,000 distinct keys creates 1,000 locks at
+  once) and for orphaned locks of crashed workers (they linger up to the
+  resty-lock expiry, 30s by default): at least `1m` is a sane floor.
+- `ipc_shm`: **zone size ≈ event rate × retention time × per-event cost**. An
+  event costs ~128 bytes as long as `len(instance name) + len(key) <= 25` bytes,
+  then ~256 bytes up to `<= 153` bytes, and so on (each slab size class
+  doubles). The retention time is how far back an event must survive so that
+  every worker can poll it (the timer period plus a margin when polling from a
+  timer); events evicted before being polled mean lost invalidations, and the
+  values' own TTL is the backstop.
 
 [Back to TOC](#table-of-contents)
 
